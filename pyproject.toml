@@ -1,0 +1,23 @@
+[project]
+name = "prc2025"
+version = "0.1.0"
+description = "PRC Data Challenge 2026 — taxi-out time prediction at 11 European airports"
+readme = "README.md"
+requires-python = "==3.11.*"
+dependencies = [
+    "pyopensky>=2.16",
+    "traffic>=2.13",
+    "polars>=1.44",
+    "pyarrow>=25.0",
+    "lightgbm>=4.7",
+    "scikit-learn>=1.9",
+    "networkx>=3.6",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter",
+]
+
+[tool.uv]
+package = false
