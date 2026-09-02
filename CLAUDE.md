@@ -171,17 +171,17 @@ Core insight
 Takeoff time (MVT_TIME_UTC_mvt) is not blanked, and the entire arrival side of the test set is intact. This is a retrospective reconstruction problem, not the forward forecasting problem the literature solves. Three consequences drive the whole design:
 Flip the target. Predict pushback delay d = AOBT − SOBT, then recover taxi = (T − SOBT) − d. Identical loss, much better inductive bias. Note inbound delay is a negative predictor of taxi-out here.
 Link departures to inbound aircraft via stand occupancy. Arrival in-block times are known exactly, so each departure can be paired with its inbound.
-That pairing gives hard interval bounds. Pushback must fall between own arrival in-block (A_own) and next occupant's in-block (A_next), so L = max(0, T − A_next) ≤ taxi ≤ T − A_own = U. Under squared loss the optimal estimate is the truncated conditional mean.
+That pairing gives interval bounds. Pushback must fall between own arrival in-block (A_own) and next occupant's in-block (A_next), so L = max(0, T − A_next) ≤ taxi ≤ T − A_own = U. [VALIDATED 2026-09-02, RESULT NEGATIVE: bounds hold (0.1% violation in the high-confidence tier) but are far too wide to constrain — median U−L ≈ 104 min ≈ 14× the taxi sd, because ground time (~93 min median) dominates. Truncated-mean gives zero RMSE gain. Stage 4 dropped. The linkage is kept for rotation features only; L_sec survives as a soft feature. See reports/stage1_link_validation.md.]
 Hard invariant
 The feature builder never sees a departure off-block time. Null BLOCK_TIME_UTC_mvt and TAXITIME_SEC_mvt on all DEP rows before any feature code runs, in train and test alike. Labels live in a separate table keyed on MVT_ID_mvt, joined only at fit time. build_features() takes one dataframe in ranking schema and cannot leak by construction.
 Architecture
 Stage 0 — ingest. Concatenate train + ranking into one frame per airport, arrivals and departures together, with a split column. Times as int64 epoch seconds, floats as float32, categoricals as codes with persisted mappings. Emit hours_of_available_context (July 2026 has no prior history; training rows never look like that).
-Stage 1 — stand linking. Per (airport, stand), align arrival and departure sequences, reconcile counts over rolling 24h windows, accept links with plausible ground time and compatible aircraft type. Output inbound_mvt_id, link_confidence, A_own, A_next, L, U, bound_binding.
-Stage 2 — features (~180 cols, six families): physical baseline (unimpeded percentile per stand-group/runway, OSM routed taxi distance) · takeoff-anchored congestion (exact rolling counts, inter-departure gaps, saturation runs) · runway configuration (inferred per 5-min bin, time since change) · rotation and schedule (bounds, inbound delay, ground time, EOBT/IOBT deltas) · weather and de-icing regime · categorical and calendar.
+Stage 1 — stand linking. [DONE — src/link/stand_link.py] Per (airport, stand), a split-blind Polars join_asof: A_own = last same-aircraft-type arrival before the estimated off-block (takeoff − 720s nominal), A_next = next arrival. Full sequence alignment / 24h reconciliation proved unnecessary — the asof linker gets 99.9% link rate and 0.1% bound violation in the high-confidence tier (type match + plausible ground time + A_next present, 92.4% of departures). Outputs inbound_mvt_id, link_confidence, A_own, A_next, L_sec, U_sec, ground_time_sec, bound_binding. Use the "high" tier only; "med" tier (7.3%, mostly type mismatch) has 7% violation.
+Stage 2 — features (~180 cols, six families): physical baseline (unimpeded percentile per stand-group/runway, OSM routed taxi distance) · takeoff-anchored congestion (exact rolling counts, inter-departure gaps, saturation runs) · runway configuration (inferred per 5-min bin, time since change) · rotation and schedule (inbound delay, scheduled/actual ground time, same-airframe flag, L_sec as a soft feature, EOBT/IOBT deltas) · weather and de-icing regime · categorical and calendar.
 Stage 3 — models. Target d, objective L2, no transforms. (a) global LightGBM + per-airport residual model. (b) queue refinement: rebuild N(t)-style features from out-of-fold predicted off-blocks, never true ones, then refit. (c) distributional head: LightGBM quantiles 0.05–0.95, or binned empirical residuals as the cheap fallback.
 Stage 3d — reference model (not scored; this is the deliverable PRC actually described). The full model predicts observed (constrained) taxi. The use case needs the unconstrained counterfactual to subtract from it. These are different models and must be fit separately — once takeoff time is a feature, the model can't answer "what would this have been on a quiet day", because the congestion is baked into the input. (IF TIME ALLOWS)
 Fit taxi_unimpeded_hat on a restricted feature set: stand, runway, aircraft type, wake category, OSM routed distance, airport configuration. No congestion features, no takeoff time. Train on low-traffic periods only, or on all data with a low-quantile objective (~q10–q20). Then excess = taxi_observed − taxi_unimpeded_hat. Sanity-check against PRU's published reference taxi times; explain divergences (routed distance vs stand-group averages, type conditioning, config awareness). Costs one extra fit on a feature subset we already have, changes nothing about the submission.
-Stage 4 — constraints. Truncate the predictive distribution to [L, U] where linking is confident, integrate for the truncated mean, clip to physical floor, convert back to taxi.
+Stage 4 — constraints. [DROPPED 2026-09-02 — Stage 1 validation showed the [L, U] interval is ~14× the taxi sd and truncation yields no RMSE gain. Retain only: clip predictions to a physical floor/ceiling in post/. L_sec stays as a soft model feature.]
 Stage 5 — eval. Holdout = Jan 2025 + Jul 2025, train on the other ten months. Report RMSE overall, per airport, per month, per decile of true taxi. Never random k-fold — neighbouring flights share congestion state.
 Ensemble: LightGBM on d, CatBoost on d, LightGBM on taxi directly (decorrelated), turnaround estimator. Non-negative ridge blend on the holdout.
 Compute
@@ -192,24 +192,24 @@ src/
   link/        stand alignment + bounds
   features/    build_features.py   <- single split-blind entry point
   models/      train, oof, quantile
-  post/        truncate, clip, submit
+  post/        clip, submit
   eval/        harness, per-slice reports
 data/external/ routed_distances.parquet, metar.parquet, LICENSE (ODbL)
 DATA_SOURCES.md
 REPRODUCE.md
 
 Planning:
-Stage 0–1. Leak audit on AOBT_3_flt, LOBT_flt, EOBT_1_flt. Trivial baseline to prove submission path.
+Stage 0–1. [DONE] Leak audit (reports/step0_audit.md) + Stage 1 link validation (reports/stage1_link_validation.md). Next: trivial baseline to prove submission path.
 Stage 2 families 1–4, stage 3a. Real baseline.
 Weather ingest, stage 3b, per-airport residual model.
-Stage 3c + constraint layer. Measure truncation gain in isolation.
+Stage 3c distributional head. Measure its gain in isolation. (Stage 4 constraint layer dropped — see below.)
 Ensemble, seasonal weighting, candidate submissions. Stage 3d reference model.
 Freeze 4 Oct. Docs, reproduction script, JOAS draft.
 Paper framing: the leaderboard scores the sum; the contribution is the split. Report the unimpeded/excess decomposition and, if we end up with both regimes, quantify what knowledge of the realised departure sequence is worth. State plainly that the model is for post-ops reconstruction and does not transfer to tactical pre-pushback prediction — say it before a reviewer does.
 Open items
-Do stage 1 validation first. On 2025 truth, measure per airport: link rate, binding rate, median U − L vs marginal sd, and violation rate. Violation rate above ~10% means towing has corrupted the alignment there; demote bounds to soft features for that airport. This determines whether the plan holds.
-Leak audit. If AOBT_3_flt or LOBT_flt survive in ranking.parquet and track BLOCK_TIME_UTC_mvt closely, the problem changes shape. Build the leak columns as a toggleable feature block so a reissued ranking file costs a retrain, not a rewrite.
-Verify MVT_TIME_UTC_mvt is populated for DEP rows in ranking.parquet before building anything on it. Two-minute null-count check. Sanity-check that MVT_TIME − SCHED_TIME looks like a plausible schedule-to-takeoff gap (~15–25 min centre, long right tail). If it's fully null the docs are stale and we fall back to a conventional forecasting architecture — hence the toggleable feature block.
+[RESOLVED] Stage 1 validation done on full 2025 truth. Link rate 99.9% every airport; high-confidence tier = 92.4% of departures with 0.1% bound violation (per-airport 0.2–3.1%, worst EGLL — none exceed the 10% soft-demotion line). BUT median U−L ≈ 14× the taxi sd and truncation adds nothing → Stage 4 dropped, linkage kept for rotation features. reports/stage1_link_validation.md.
+[RESOLVED] Leak audit done (reports/step0_audit.md). AOBT_3_flt is present for 98.9% of DEP rows but is a noisy/biased second off-block measurement, not a clean leak: naive taxi = MVT_TIME − AOBT_3_flt has RMSE ≈ 385 s (taxi sd ≈ 546 s). LOBT/IOBT/EOBT_1 are planned times, track off-block worse. Build AOBT_3_flt (and the planned-time deltas) as a toggleable feature block per the plan.
+[RESOLVED] MVT_TIME_UTC_mvt is populated for 100% of DEP rows in ranking.parquet. MVT_TIME − SCHED_TIME: p50 ≈ 25 min, long right tail. The retrospective-reconstruction architecture holds. Also: LTAI (Antalya) has zero departures in train or ranking — the DEP target covers 10 airports, not 11.
 Ask on OSN Discord (low urgency now, but free): confirm MVT_TIME_UTC_mvt availability for departures; whether OpenSky ADS-B ground trajectories are permitted for pushback detection; whether developing in a private repo before making it public is acceptable.
 Conventions
 Fixed seeds; LightGBM deterministic=true, force_row_wise=true.
