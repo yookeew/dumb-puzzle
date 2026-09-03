@@ -109,8 +109,17 @@ ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
 
 # ------------------------------------------------------------------ utilities
 def _matrix(feats, categories=None):
+    """Model matrix as a pandas frame. Categorical columns carry a pandas
+    `category` dtype with a fixed [-1, 0..K-1] category set (K from `categories`)
+    so LightGBM and XGBoost both see them as categorical and the codes line up
+    across the train / holdout / ranking frames."""
+    import pandas as pd
+
     X, names, cats, categories = feature_matrix(feats, categories)
-    return X.with_columns([pl.col(c).fill_null(-1) for c in cats]).to_pandas(), names, cats, categories
+    pdf = X.with_columns([pl.col(c).fill_null(-1) for c in cats]).to_pandas()
+    for c in cats:
+        pdf[c] = pd.Categorical(pdf[c], categories=[-1, *range(len(categories[c]))])
+    return pdf, names, cats, categories
 
 
 def _rmse(a, b):
