@@ -62,7 +62,7 @@ def _fit_xgb(X, y, cats, seed=42):
         gpu = "cuda" if xgb.build_info().get("USE_CUDA") else "cpu"
     except Exception:
         gpu = "cpu"
-    dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True)
+    dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True, max_bin=127)
     params = dict(
         objective="reg:squarederror", eval_metric="rmse", eta=0.03, max_depth=10,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
