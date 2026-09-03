@@ -37,25 +37,44 @@ TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 HOLDOUT_MONTHS = ("2025-01", "2025-07")
 FLOOR, CEIL = 0, 10800
 LABEL_LO, LABEL_HI = 30, 7200
-ROUNDS = 1500
+
+# Training budget. ROUNDS is a ceiling — early stopping on an inner-validation
+# month (VALID_MONTH, carved out of the training split) picks the real count,
+# then the all-data refit runs ~1.1x that many rounds. Lower ETA + higher
+# ROUNDS trades compute for a little accuracy; crank via run(rounds=, eta=).
+ROUNDS = 8000
+ETA = 0.02
+EARLY_STOP = 150
+VALID_MONTH = "2025-06"
 
 
 # --------------------------------------------------------------------- engines
-def _fit_lgb(X, y, cats, seed=42):
+def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
     import lightgbm as lgb
 
     params = dict(
-        objective="regression", metric="rmse", learning_rate=0.03, num_leaves=255,
+        objective="regression", metric="rmse", learning_rate=eta, num_leaves=255,
         min_data_in_leaf=100, feature_fraction=0.8, bagging_fraction=0.8,
         bagging_freq=1, max_bin=127, deterministic=True, force_row_wise=True,
         seed=seed, num_threads=0, verbose=-1,
     )
     ds = lgb.Dataset(X, label=y, categorical_feature=cats, free_raw_data=False)
-    m = lgb.train(params, ds, num_boost_round=ROUNDS)
-    return m, (lambda M, A: M.predict(A))
+    valid_sets, cbs = [], []
+    if valid is not None and es:
+        vds = lgb.Dataset(valid[0], label=valid[1], reference=ds,
+                          categorical_feature=cats, free_raw_data=False)
+        valid_sets, cbs = [vds], [lgb.early_stopping(es, verbose=False)]
+    m = lgb.train(params, ds, num_boost_round=rounds, valid_sets=valid_sets, callbacks=cbs)
+    best = m.best_iteration or rounds
+
+    def predict(M, A):
+        bi = getattr(M, "best_iteration", 0)
+        return M.predict(A, num_iteration=bi if bi and bi > 0 else None)
+
+    return m, predict, best
 
 
-def _fit_xgb(X, y, cats, seed=42):
+def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
     import xgboost as xgb
 
     try:
@@ -64,12 +83,25 @@ def _fit_xgb(X, y, cats, seed=42):
         gpu = "cpu"
     dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True, max_bin=127)
     params = dict(
-        objective="reg:squarederror", eval_metric="rmse", eta=0.03, max_depth=10,
+        objective="reg:squarederror", eval_metric="rmse", eta=eta, max_depth=10,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
         tree_method="hist", seed=seed,
     )
-    m = xgb.train(params, dtrain, num_boost_round=ROUNDS)
-    return m, (lambda M, A: M.predict(xgb.DMatrix(A, enable_categorical=True)))
+    evals, es_arg = [], None
+    if valid is not None and es:
+        dvalid = xgb.QuantileDMatrix(valid[0], label=valid[1], ref=dtrain,
+                                     enable_categorical=True, max_bin=127)
+        evals, es_arg = [(dvalid, "valid")], es
+    m = xgb.train(params, dtrain, num_boost_round=rounds, evals=evals,
+                  early_stopping_rounds=es_arg, verbose_eval=False)
+    best = getattr(m, "best_iteration", rounds - 1) + 1
+
+    def predict(M, A):
+        d = xgb.DMatrix(A, enable_categorical=True)
+        bi = getattr(M, "best_iteration", None)
+        return M.predict(d, iteration_range=(0, bi + 1)) if bi is not None else M.predict(d)
+
+    return m, predict, best
 
 
 ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
@@ -118,7 +150,8 @@ def _md_table(rows, headers):
     return "\n".join(out)
 
 
-def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = None):
+def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = None,
+                  meta: dict | None = None):
     """Markdown holdout report -> reports/eval/<name>.md (CLAUDE.md Stage 5 slices)."""
     import datetime as dt
 
@@ -128,10 +161,15 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
     mae = float(ev.select(e.abs().mean()).item())
     bias = float(ev.select(e.mean()).item())
 
+    m = meta or {}
+    train_line = (f"- eta {m.get('eta', ETA)}  |  rounds ceiling {m.get('rounds', ROUNDS)}  |  "
+                  f"early-stopped at {m.get('best_iter', '?')} (inner-valid "
+                  f"{m.get('valid_month', VALID_MONTH)})  |  full-refit rounds "
+                  f"{m.get('full_rounds', '?')}")
     L = [
         f"# Holdout eval — {name}", "",
-        f"- engine: **{engine}**   |   rounds: {ROUNDS}   |   "
-        f"generated: {dt.datetime.now():%Y-%m-%d %H:%M}",
+        f"- engine: **{engine}**   |   generated: {dt.datetime.now():%Y-%m-%d %H:%M}",
+        train_line,
         f"- holdout = {', '.join(HOLDOUT_MONTHS)} (fit on the other 10 months of 2025)",
         f"- rows scored: {n:,} (true taxi clipped to [0, 4h] for reporting)",
         f"- target d clipped to [{LABEL_LO}, {LABEL_HI}] s in training; "
@@ -192,7 +230,9 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 
 
 # ------------------------------------------------------------------------ run
-def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None):
+def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
+        *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
+        valid_month: str = VALID_MONTH, refit_scale: float = 1.1):
     t0 = time.time()
     fitter = ENGINES[engine]
     name = name or f"{engine}_colab"
@@ -211,9 +251,18 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None)
     ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
 
     Xtr, names, cats, categories = _matrix(f_tr)
-    keep = tr_lab["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
-    model, pred_fn = fitter(Xtr[keep], tr_lab["d"].to_numpy()[keep], cats)
-    print(f"holdout fit {time.time() - t0:.0f}s")
+    d_tr = tr_lab["d"].to_numpy()
+    taxi_tr = tr_lab["taxi"].to_numpy()
+    ym_tr = tr_lab["ym"].to_numpy()
+    keep = (taxi_tr >= LABEL_LO) & (taxi_tr <= LABEL_HI)
+    iv = ym_tr == valid_month
+    if not iv.any():
+        raise ValueError(f"valid_month {valid_month!r} not in training months")
+    tr_mask, va_mask = keep & ~iv, keep & iv
+    model, pred_fn, best_it = fitter(
+        Xtr[tr_mask], d_tr[tr_mask], cats,
+        eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], d_tr[va_mask]))
+    print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}")
 
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
@@ -222,20 +271,25 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None)
         pl.col("taxi").is_between(0, 4 * 3600))
     _report(ev)
 
-    # refit on all 2025 + ranking submission
+    # refit on all 2025 + ranking submission, no early stopping — reuse the
+    # iteration count early stopping found, nudged up for the larger data.
+    full_rounds = max(200, int(round(best_it * refit_scale)))
     priors_a = fit_priors(lab)
     f_all = apply_priors(feats, priors_a)
     lab_a = f_all.select("MVT_ID_mvt").join(lab, on="MVT_ID_mvt")
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
-    model_a, pred_a = fitter(Xall[keep], lab_a["d"].to_numpy()[keep], cats_a)
+    model_a, pred_a, _ = fitter(Xall[keep], lab_a["d"].to_numpy()[keep], cats_a,
+                                eta=eta, rounds=full_rounds, es=0, valid=None)
 
     f_r = apply_priors(pl.read_parquet(feat_dir / "ranking.parquet"), priors_a)
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
     taxi_r = np.clip(r_off - pred_a(model_a, Xr[names_a]), FLOOR, CEIL)
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
-    _write_report(ev, name, engine, sub)
+    _write_report(ev, name, engine, sub, meta=dict(
+        eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,
+        valid_month=valid_month))
     print(f"total {time.time() - t0:.0f}s")
     return model, ev
 
