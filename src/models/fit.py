@@ -31,6 +31,7 @@ from features.encode import apply_priors, feature_matrix, fit_priors  # noqa: E4
 ROOT = Path(__file__).resolve().parents[2]
 FEAT_DIR = ROOT / "cache" / "features"
 SUB_DIR = ROOT / "data" / "submissions"
+REPORT_DIR = ROOT / "reports" / "eval"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 
 HOLDOUT_MONTHS = ("2025-01", "2025-07")
@@ -102,8 +103,92 @@ def _write_submission(mvt_ids, taxi, name):
     assert (merged["TAXITIME_SEC_mvt"] >= 0).all()
     SUB_DIR.mkdir(exist_ok=True)
     merged.write_parquet(SUB_DIR / f"{name}.parquet")
-    print(f"wrote {name}.parquet  n={merged.height:,}  "
-          f"median={merged['TAXITIME_SEC_mvt'].median()}")
+    s = merged["TAXITIME_SEC_mvt"]
+    print(f"wrote {name}.parquet  n={merged.height:,}  median={s.median()}")
+    return dict(rows=merged.height, min=int(s.min()), p10=float(s.quantile(0.1)),
+                median=float(s.median()), mean=float(s.mean()),
+                p90=float(s.quantile(0.9)), max=int(s.max()),
+                at_floor=int((s <= FLOOR).sum()), at_ceil=int((s >= CEIL).sum()))
+
+
+def _md_table(rows, headers):
+    out = ["| " + " | ".join(headers) + " |",
+           "| " + " | ".join("---" for _ in headers) + " |"]
+    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return "\n".join(out)
+
+
+def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = None):
+    """Markdown holdout report -> reports/eval/<name>.md (CLAUDE.md Stage 5 slices)."""
+    import datetime as dt
+
+    e = pl.col("pred").cast(float) - pl.col("taxi").cast(float)
+    n = ev.height
+    overall = float(ev.select(e.pow(2).mean()).item() ** 0.5)
+    mae = float(ev.select(e.abs().mean()).item())
+    bias = float(ev.select(e.mean()).item())
+
+    L = [
+        f"# Holdout eval — {name}", "",
+        f"- engine: **{engine}**   |   rounds: {ROUNDS}   |   "
+        f"generated: {dt.datetime.now():%Y-%m-%d %H:%M}",
+        f"- holdout = {', '.join(HOLDOUT_MONTHS)} (fit on the other 10 months of 2025)",
+        f"- rows scored: {n:,} (true taxi clipped to [0, 4h] for reporting)",
+        f"- target d clipped to [{LABEL_LO}, {LABEL_HI}] s in training; "
+        f"taxi predictions clipped to [{FLOOR}, {CEIL}] s", "",
+        "## Overall", "",
+        _md_table([(f"{overall:.1f}", f"{mae:.1f}", f"{bias:+.1f}")],
+                  ["RMSE (s)", "MAE (s)", "mean error (pred−true, s)"]), "",
+    ]
+
+    g = (ev.group_by("ADEP_mvt").agg(
+            e.pow(2).mean().sqrt().alias("rmse"), e.mean().alias("bias"),
+            pl.col("taxi").mean().alias("mt"), pl.len().alias("n"))
+         .sort("rmse", descending=True))
+    L += ["## Per airport", "",
+          _md_table([(r["ADEP_mvt"], f"{r['rmse']:.1f}", f"{r['bias']:+.1f}",
+                      f"{r['mt']:.0f}", f"{r['n']:,}") for r in g.iter_rows(named=True)],
+                    ["airport", "rmse", "bias", "mean taxi", "n"]), ""]
+
+    g = ev.group_by("ym").agg(
+        e.pow(2).mean().sqrt().alias("rmse"), pl.len().alias("n")).sort("ym")
+    L += ["## Per month", "",
+          _md_table([(r["ym"], f"{r['rmse']:.1f}", f"{r['n']:,}")
+                     for r in g.iter_rows(named=True)], ["month", "rmse", "n"]), ""]
+
+    dec = ev.with_columns(((pl.col("taxi").rank("ordinal") - 1) * 10 // pl.len()).alias("dq"))
+    g = (dec.group_by("dq").agg(
+            e.pow(2).mean().sqrt().alias("rmse"), e.mean().alias("bias"),
+            pl.col("taxi").min().alias("lo"), pl.col("taxi").max().alias("hi"),
+            pl.len().alias("n")).sort("dq"))
+    L += ["## Per true-taxi decile", "",
+          _md_table([(f"d{r['dq']}", f"{r['lo']}–{r['hi']}", f"{r['rmse']:.1f}",
+                      f"{r['bias']:+.1f}", f"{r['n']:,}") for r in g.iter_rows(named=True)],
+                    ["decile", "taxi range (s)", "rmse", "bias", "n"]), ""]
+
+    q = ev.select(
+        pl.col("pred").min().alias("mn"), pl.col("pred").quantile(0.1).alias("p10"),
+        pl.col("pred").median().alias("p50"), pl.col("pred").quantile(0.9).alias("p90"),
+        pl.col("pred").max().alias("mx"),
+        (pl.col("pred") <= FLOOR).sum().alias("f"),
+        (pl.col("pred") >= CEIL).sum().alias("c")).row(0)
+    L += ["## Predicted taxi distribution (holdout)", "",
+          _md_table([tuple(f"{v:.0f}" for v in q[:5]) + (q[5], q[6])],
+                    ["min", "p10", "p50", "p90", "max", "n@floor", "n@ceil"]), ""]
+
+    if sub:
+        L += ["## Submission file (ranking, Jan+Jul 2026)", "",
+              _md_table([(f"{sub['rows']:,}", sub["min"], f"{sub['p10']:.0f}",
+                          f"{sub['median']:.0f}", f"{sub['mean']:.0f}", f"{sub['p90']:.0f}",
+                          sub["max"], sub["at_floor"], sub["at_ceil"])],
+                        ["rows", "min", "p10", "median", "mean", "p90", "max",
+                         "n@floor", "n@ceil"]), ""]
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPORT_DIR / f"{name}.md"
+    path.write_text("\n".join(L), encoding="utf-8")
+    print(f"wrote {path.relative_to(ROOT)}")
+    return path
 
 
 # ------------------------------------------------------------------------ run
@@ -149,7 +234,8 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None)
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
     taxi_r = np.clip(r_off - pred_a(model_a, Xr[names_a]), FLOOR, CEIL)
-    _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
+    sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
+    _write_report(ev, name, engine, sub)
     print(f"total {time.time() - t0:.0f}s")
     return model, ev
 
