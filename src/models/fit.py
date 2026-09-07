@@ -26,7 +26,14 @@ import numpy as np
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from features.encode import apply_priors, feature_matrix, fit_priors  # noqa: E402
+from features.encode import (  # noqa: E402
+    add_group_encodings_oof,
+    apply_group_encodings,
+    apply_priors,
+    feature_matrix,
+    fit_group_encodings,
+    fit_priors,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 FEAT_DIR = ROOT / "cache" / "features"
@@ -250,6 +257,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     lab = pl.read_parquet(feat_dir / "labels2025.parquet")
     off = feats.select("MVT_ID_mvt", "sched_takeoff_offset")
 
+    # the group encoders key on operator, which lives only in the feature frame
+    lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
+                   on="MVT_ID_mvt", how="left")
+
     is_ho = pl.col("ym").is_in(HOLDOUT_MONTHS)
     tr_lab, ho_lab = lab.filter(~is_ho), lab.filter(is_ho)
 
@@ -258,6 +269,11 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     f_ho = apply_priors(feats.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
     tr_lab = f_tr.select("MVT_ID_mvt").join(tr_lab, on="MVT_ID_mvt")
     ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
+
+    # echo-rate / mean-d group encodings: OOF (leave-one-month-out) for the
+    # training rows, full training-split fit for the holdout.
+    f_tr = add_group_encodings_oof(f_tr, tr_lab)
+    f_ho = apply_group_encodings(f_ho, fit_group_encodings(tr_lab))
 
     Xtr, names, cats, categories = _matrix(f_tr)
     d_tr = tr_lab["d"].to_numpy()
@@ -286,12 +302,15 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     priors_a = fit_priors(lab)
     f_all = apply_priors(feats, priors_a)
     lab_a = f_all.select("MVT_ID_mvt").join(lab, on="MVT_ID_mvt")
+    f_all = add_group_encodings_oof(f_all, lab_a)
+    genc_a = fit_group_encodings(lab_a)
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
     model_a, pred_a, _ = fitter(Xall[keep], lab_a["d"].to_numpy()[keep], cats_a,
                                 eta=eta, rounds=full_rounds, es=0, valid=None)
 
     f_r = apply_priors(pl.read_parquet(feat_dir / "ranking.parquet"), priors_a)
+    f_r = apply_group_encodings(f_r, genc_a)
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
     taxi_r = np.clip(r_off - pred_a(model_a, Xr[names_a]), FLOOR, CEIL)
