@@ -49,14 +49,24 @@ LABEL_LO, LABEL_HI = 30, 7200
 # month (VALID_MONTH, carved out of the training split) picks the real count,
 # then the all-data refit runs ~1.1x that many rounds. Lower ETA + higher
 # ROUNDS trades compute for a little accuracy; crank via run(rounds=, eta=).
-ROUNDS = 8000
+ROUNDS = 2000
 ETA = 0.02
 EARLY_STOP = 150
 VALID_MONTH = "2025-06"
 
+# Tail weighting. The top decile of true taxi (long runway queues / ATFM slots)
+# carries ~half the squared error and the model under-predicts it by ~5 min
+# (reports/eval — d9 bias). Upweight training rows by true taxi: weight ramps
+# linearly from 1 at the TAIL_Q quantile to 1 + TAIL_W at the TAIL_CAP_Q
+# quantile, flat outside. Deliberate bias trade — tune via run(tail_w=).
+TAIL_Q = 0.85
+TAIL_CAP_Q = 0.99
+TAIL_W = 3.0
+
 
 # --------------------------------------------------------------------- engines
-def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
+def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
+             weight=None, seed=42):
     import lightgbm as lgb
 
     params = dict(
@@ -65,10 +75,12 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
         bagging_freq=1, max_bin=127, deterministic=True, force_row_wise=True,
         seed=seed, num_threads=0, verbose=-1,
     )
-    ds = lgb.Dataset(X, label=y, categorical_feature=cats, free_raw_data=False)
+    ds = lgb.Dataset(X, label=y, weight=weight, categorical_feature=cats,
+                     free_raw_data=False)
     valid_sets, cbs = [], []
     if valid is not None and es:
-        vds = lgb.Dataset(valid[0], label=valid[1], reference=ds,
+        vw = valid[2] if len(valid) > 2 else None
+        vds = lgb.Dataset(valid[0], label=valid[1], weight=vw, reference=ds,
                           categorical_feature=cats, free_raw_data=False)
         valid_sets, cbs = [vds], [lgb.early_stopping(es, verbose=False)]
     m = lgb.train(params, ds, num_boost_round=rounds, valid_sets=valid_sets, callbacks=cbs)
@@ -81,14 +93,16 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     return m, predict, best
 
 
-def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
+def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
+             weight=None, seed=42):
     import xgboost as xgb
 
     try:
         gpu = "cuda" if xgb.build_info().get("USE_CUDA") else "cpu"
     except Exception:
         gpu = "cpu"
-    dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True, max_bin=127)
+    dtrain = xgb.QuantileDMatrix(X, label=y, weight=weight,
+                                 enable_categorical=True, max_bin=127)
     params = dict(
         objective="reg:squarederror", eval_metric="rmse", eta=eta, max_depth=10,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
@@ -96,7 +110,8 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     )
     evals, es_arg = [], None
     if valid is not None and es:
-        dvalid = xgb.QuantileDMatrix(valid[0], label=valid[1], ref=dtrain,
+        vw = valid[2] if len(valid) > 2 else None
+        dvalid = xgb.QuantileDMatrix(valid[0], label=valid[1], weight=vw, ref=dtrain,
                                      enable_categorical=True, max_bin=127)
         evals, es_arg = [(dvalid, "valid")], es
     m = xgb.train(params, dtrain, num_boost_round=rounds, evals=evals,
@@ -131,6 +146,20 @@ def _matrix(feats, categories=None):
 
 def _rmse(a, b):
     return float(np.sqrt(np.mean((np.asarray(a, float) - np.asarray(b, float)) ** 2)))
+
+
+def _tail_weight(taxi, q=TAIL_Q, w=TAIL_W, cap_q=TAIL_CAP_Q):
+    """Per-row training weight, ramping from 1 at the q-quantile of true taxi to
+    1 + w at the cap_q-quantile, flat outside. Emphasises the long-taxi tail the
+    model under-predicts. Returns all-ones if w <= 0 or the band is degenerate."""
+    taxi = np.asarray(taxi, float)
+    if w <= 0:
+        return np.ones_like(taxi)
+    lo, hi = np.quantile(taxi, q), np.quantile(taxi, cap_q)
+    if hi <= lo:
+        return np.ones_like(taxi)
+    frac = np.clip((taxi - lo) / (hi - lo), 0.0, 1.0)
+    return (1.0 + w * frac).astype(np.float64)
 
 
 def _report(df: pl.DataFrame, pred="pred", true="taxi"):
@@ -181,7 +210,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
     train_line = (f"- eta {m.get('eta', ETA)}  |  rounds ceiling {m.get('rounds', ROUNDS)}  |  "
                   f"early-stopped at {m.get('best_iter', '?')} (inner-valid "
                   f"{m.get('valid_month', VALID_MONTH)})  |  full-refit rounds "
-                  f"{m.get('full_rounds', '?')}")
+                  f"{m.get('full_rounds', '?')}  |  tail weight "
+                  f"{m.get('tail_w', TAIL_W)}× from q{m.get('tail_q', TAIL_Q)}")
     L = [
         f"# Holdout eval — {name}", "",
         f"- engine: **{engine}**   |   generated: {dt.datetime.now():%Y-%m-%d %H:%M}",
@@ -248,7 +278,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 # ------------------------------------------------------------------------ run
 def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
-        valid_month: str = VALID_MONTH, refit_scale: float = 1.1):
+        valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
+        tail_q: float = TAIL_Q, tail_w: float = TAIL_W):
     t0 = time.time()
     fitter = ENGINES[engine]
     name = name or f"{engine}_colab"
@@ -284,9 +315,11 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     if not iv.any():
         raise ValueError(f"valid_month {valid_month!r} not in training months")
     tr_mask, va_mask = keep & ~iv, keep & iv
+    w_tr = _tail_weight(taxi_tr, tail_q, tail_w)
     model, pred_fn, best_it = fitter(
-        Xtr[tr_mask], d_tr[tr_mask], cats,
-        eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], d_tr[va_mask]))
+        Xtr[tr_mask], d_tr[tr_mask], cats, weight=w_tr[tr_mask],
+        eta=eta, rounds=rounds, es=es,
+        valid=(Xtr[va_mask], d_tr[va_mask], w_tr[va_mask]))
     print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}")
 
     Xho, _, _, _ = _matrix(f_ho, categories)
@@ -306,7 +339,9 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     genc_a = fit_group_encodings(lab_a)
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
+    w_a = _tail_weight(lab_a["taxi"].to_numpy(), tail_q, tail_w)
     model_a, pred_a, _ = fitter(Xall[keep], lab_a["d"].to_numpy()[keep], cats_a,
+                                weight=w_a[keep],
                                 eta=eta, rounds=full_rounds, es=0, valid=None)
 
     f_r = apply_priors(pl.read_parquet(feat_dir / "ranking.parquet"), priors_a)
@@ -317,7 +352,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     _write_report(ev, name, engine, sub, meta=dict(
         eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,
-        valid_month=valid_month))
+        valid_month=valid_month, tail_q=tail_q, tail_w=tail_w))
     print(f"total {time.time() - t0:.0f}s")
     return model, ev
 
