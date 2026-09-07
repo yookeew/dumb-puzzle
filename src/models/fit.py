@@ -63,10 +63,13 @@ TAIL_Q = 0.85
 TAIL_CAP_Q = 0.99
 TAIL_W = 3.0
 
+# Print iteration count + running RMSE every LOG_EVERY boosting rounds (0 = off).
+LOG_EVERY = 50
+
 
 # --------------------------------------------------------------------- engines
 def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
-             weight=None, seed=42):
+             weight=None, seed=42, log_every=LOG_EVERY):
     import lightgbm as lgb
 
     params = dict(
@@ -77,13 +80,20 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
     )
     ds = lgb.Dataset(X, label=y, weight=weight, categorical_feature=cats,
                      free_raw_data=False)
-    valid_sets, cbs = [], []
+    cbs = []
     if valid is not None and es:
         vw = valid[2] if len(valid) > 2 else None
         vds = lgb.Dataset(valid[0], label=valid[1], weight=vw, reference=ds,
                           categorical_feature=cats, free_raw_data=False)
-        valid_sets, cbs = [vds], [lgb.early_stopping(es, verbose=False)]
-    m = lgb.train(params, ds, num_boost_round=rounds, valid_sets=valid_sets, callbacks=cbs)
+        valid_sets, valid_names = [vds], ["valid"]
+        cbs = [lgb.early_stopping(es, verbose=bool(log_every))]
+    else:
+        # no held-out set (all-data refit) — evaluate on train so progress prints
+        valid_sets, valid_names = [ds], ["train"]
+    if log_every:
+        cbs.append(lgb.log_evaluation(period=log_every))
+    m = lgb.train(params, ds, num_boost_round=rounds, valid_sets=valid_sets,
+                  valid_names=valid_names, callbacks=cbs)
     best = m.best_iteration or rounds
 
     def predict(M, A):
@@ -94,7 +104,7 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
 
 
 def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
-             weight=None, seed=42):
+             weight=None, seed=42, log_every=LOG_EVERY):
     import xgboost as xgb
 
     try:
@@ -108,14 +118,14 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
         tree_method="hist", seed=seed,
     )
-    evals, es_arg = [], None
+    evals, es_arg = [(dtrain, "train")], None
     if valid is not None and es:
         vw = valid[2] if len(valid) > 2 else None
         dvalid = xgb.QuantileDMatrix(valid[0], label=valid[1], weight=vw, ref=dtrain,
                                      enable_categorical=True, max_bin=127)
-        evals, es_arg = [(dvalid, "valid")], es
+        evals, es_arg = [(dtrain, "train"), (dvalid, "valid")], es
     m = xgb.train(params, dtrain, num_boost_round=rounds, evals=evals,
-                  early_stopping_rounds=es_arg, verbose_eval=False)
+                  early_stopping_rounds=es_arg, verbose_eval=log_every or False)
     best = getattr(m, "best_iteration", rounds - 1) + 1
 
     def predict(M, A):
