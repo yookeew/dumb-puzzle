@@ -338,6 +338,8 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     ev = ho_lab.join(off, on="MVT_ID_mvt").with_columns(pred=pl.Series(taxi_hat)).filter(
         pl.col("taxi").is_between(0, 4 * 3600))
     _report(ev)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    ev.write_parquet(REPORT_DIR / f"{name}_holdout.parquet")  # for src/eval/tail_audit.py
 
     # refit on all 2025 + ranking submission, no early stopping — reuse the
     # iteration count early stopping found, nudged up for the larger data.
