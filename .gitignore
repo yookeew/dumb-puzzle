@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.pyc
+.env
 
 # Data (large, not committed — fetch scripts + small derived tables are)
 data/raw/
