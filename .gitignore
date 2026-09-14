@@ -6,7 +6,7 @@ __pycache__/
 
 # Data (large, not committed — fetch scripts + small derived tables are)
 data/raw/
-data/ranking/
+#data/ranking/
 data/submissions/
 cache/
 
