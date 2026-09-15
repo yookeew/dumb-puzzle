@@ -4,13 +4,17 @@ No dependency on raw data or the Polars family builders: only `features.encode`
 (categorical encoding + taxi priors). Same code path locally and on Colab.
 
     from models.fit import run
-    run(engine="lgb")          # local CPU
-    run(engine="xgb")          # Colab, uses device="cuda" if a GPU is present
+    run(engine="lgb")                    # local CPU, huber loss alpha=800 (default)
+    run(engine="xgb")                    # Colab, uses device="cuda" if a GPU is present
+    run(engine="lgb", loss="l2")         # plain L2/MSE, the old default
 
 Inputs (see features/export_model_inputs.py):
-    <feat_dir>/train2025.parquet   base features, all 2025 departures
-    <feat_dir>/ranking.parquet     base features, ranking departures
-    <feat_dir>/labels2025.parquet  MVT_ID_mvt, ADEP/RUNWAY/STAND, taxi, d, ym
+    <feat_dir>/train2025.parquet       base features, all 2025 departures
+    <feat_dir>/holdout_gap2025.parquet base features, isolated Jan+Jul 2025 --
+                                        mirrors ranking.parquet's Jan->Jul gap
+                                        instead of a continuous 12-month frame
+    <feat_dir>/ranking.parquet         base features, ranking departures
+    <feat_dir>/labels2025.parquet      MVT_ID_mvt, ADEP/RUNWAY/STAND, taxi, d, ym
 """
 
 from __future__ import annotations
@@ -49,6 +53,10 @@ LABEL_LO, LABEL_HI = 30, 7200
 # month (VALID_MONTH, carved out of the training split) picks the real count,
 # then the all-data refit runs ~1.1x that many rounds. Lower ETA + higher
 # ROUNDS trades compute for a little accuracy; crank via run(rounds=, eta=).
+# Huber (the default loss, see LOSS_OBJECTIVE below) converges slower than L2 --
+# it still hadn't plateaued at 8000 rounds in testing (best_iter=7998/8000) --
+# so this ceiling is a local-CPU compromise, not a confirmed plateau. Push it
+# higher on Colab/GPU if you want to find where it actually stops improving.
 ROUNDS = 8000
 ETA = 0.02
 EARLY_STOP = 150
@@ -56,15 +64,20 @@ VALID_MONTH = "2025-06"
 
 
 # --------------------------------------------------------------------- engines
-def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
+def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
+             objective="regression", alpha=None):
     import lightgbm as lgb
 
+    # metric stays rmse regardless of objective -- early stopping and reporting
+    # always select on the competition metric, only the training gradient changes.
     params = dict(
-        objective="regression", metric="rmse", learning_rate=eta, num_leaves=255,
+        objective=objective, metric="rmse", learning_rate=eta, num_leaves=255,
         min_data_in_leaf=100, feature_fraction=0.8, bagging_fraction=0.8,
         bagging_freq=1, max_bin=127, deterministic=True, force_row_wise=True,
         seed=seed, num_threads=0, verbose=-1,
     )
+    if alpha is not None:
+        params["alpha"] = alpha
     ds = lgb.Dataset(X, label=y, categorical_feature=cats, free_raw_data=False)
     valid_sets, cbs = [], []
     if valid is not None and es:
@@ -81,7 +94,8 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     return m, predict, best
 
 
-def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42):
+def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
+             objective="reg:squarederror", alpha=None):
     import xgboost as xgb
 
     try:
@@ -90,10 +104,12 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
         gpu = "cpu"
     dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True, max_bin=127)
     params = dict(
-        objective="reg:squarederror", eval_metric="rmse", eta=eta, max_depth=10,
+        objective=objective, eval_metric="rmse", eta=eta, max_depth=10,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
         tree_method="hist", seed=seed,
     )
+    if alpha is not None and objective == "reg:pseudohubererror":
+        params["huber_slope"] = alpha
     evals, es_arg = [], None
     if valid is not None and es:
         dvalid = xgb.QuantileDMatrix(valid[0], label=valid[1], ref=dtrain,
@@ -178,7 +194,11 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
     bias = float(ev.select(e.mean()).item())
 
     m = meta or {}
-    train_line = (f"- eta {m.get('eta', ETA)}  |  rounds ceiling {m.get('rounds', ROUNDS)}  |  "
+    loss_bit = m.get("loss", "l2")
+    if loss_bit == "huber":
+        loss_bit += f" (alpha={m.get('huber_alpha', HUBER_ALPHA)})"
+    train_line = (f"- loss {loss_bit}  |  eta {m.get('eta', ETA)}  |  "
+                  f"rounds ceiling {m.get('rounds', ROUNDS)}  |  "
                   f"early-stopped at {m.get('best_iter', '?')} (inner-valid "
                   f"{m.get('valid_month', VALID_MONTH)})  |  full-refit rounds "
                   f"{m.get('full_rounds', '?')}")
@@ -245,17 +265,39 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
     return path
 
 
+# objective name per engine for each loss choice; alpha is each engine's delta/
+# slope parameter for the robust (huber) loss, in seconds of residual -- within
+# alpha, huber behaves like L2 (same as before); beyond it, the gradient is
+# capped instead of growing with residual size, so a handful of huge-residual
+# rows (LIRF, the d9 tail) can no longer pull splits toward fitting them exactly.
+LOSS_OBJECTIVE = {
+    "l2": {"lgb": "regression", "xgb": "reg:squarederror"},
+    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror"},
+}
+# alpha=800 beat plain L2 on the gap-realistic holdout (303.1s vs 309.2s overall,
+# improved on 6/10 airports incl. LIRF, tail d9 667.7 vs 677.0s, no airport
+# regressed by more than ~5s) -- see reports/eval/lgb_colab_huber_a800.md.
+# alpha=400 was tried first and was worse (383.9s undertrained at a 2500-round
+# ceiling, 315.6s even at the full 8000-round ceiling) -- it never converged and
+# capped too much of the ordinary error range, not just genuine outliers.
+HUBER_ALPHA = 800.0
+
+
 # ------------------------------------------------------------------------ run
 def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
-        valid_month: str = VALID_MONTH, refit_scale: float = 1.1):
+        valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
+        loss: str = "huber", huber_alpha: float = HUBER_ALPHA):
     t0 = time.time()
     fitter = ENGINES[engine]
     name = name or f"{engine}_colab"
+    objective = LOSS_OBJECTIVE[loss][engine]
+    alpha = huber_alpha if loss == "huber" else None
 
     feats = pl.read_parquet(feat_dir / "train2025.parquet")
+    feats_ho = pl.read_parquet(feat_dir / "holdout_gap2025.parquet")
     lab = pl.read_parquet(feat_dir / "labels2025.parquet")
-    off = feats.select("MVT_ID_mvt", "sched_takeoff_offset")
+    off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
 
     # the group encoders key on operator, which lives only in the feature frame
     lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
@@ -264,9 +306,14 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     is_ho = pl.col("ym").is_in(HOLDOUT_MONTHS)
     tr_lab, ho_lab = lab.filter(~is_ho), lab.filter(is_ho)
 
+    # Holdout features come from the isolated Jan+Jul frame (export_model_inputs.py),
+    # not a slice of the continuous train2025 frame -- that mirrors ranking.parquet's
+    # real Jan->Jul gap instead of hiding it behind a continuous 12-month timeline,
+    # which is what let a real bug (mins_since_cfg_change bridging the gap) hide
+    # behind a good holdout RMSE.
     priors = fit_priors(tr_lab)
     f_tr = apply_priors(feats.join(tr_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
-    f_ho = apply_priors(feats.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
+    f_ho = apply_priors(feats_ho.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
     tr_lab = f_tr.select("MVT_ID_mvt").join(tr_lab, on="MVT_ID_mvt")
     ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
 
@@ -286,13 +333,14 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     tr_mask, va_mask = keep & ~iv, keep & iv
     model, pred_fn, best_it = fitter(
         Xtr[tr_mask], d_tr[tr_mask], cats,
-        eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], d_tr[va_mask]))
-    print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}")
+        eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], d_tr[va_mask]),
+        objective=objective, alpha=alpha)
+    print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}  loss={loss}")
 
     Xho, _, _, _ = _matrix(f_ho, categories)
-    ho_off = ho_lab.join(off, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
+    ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
     taxi_hat = np.clip(ho_off - pred_fn(model, Xho[names]), FLOOR, CEIL)
-    ev = ho_lab.join(off, on="MVT_ID_mvt").with_columns(pred=pl.Series(taxi_hat)).filter(
+    ev = ho_lab.join(off_ho, on="MVT_ID_mvt").with_columns(pred=pl.Series(taxi_hat)).filter(
         pl.col("taxi").is_between(0, 4 * 3600))
     _report(ev)
 
@@ -307,7 +355,8 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
     model_a, pred_a, _ = fitter(Xall[keep], lab_a["d"].to_numpy()[keep], cats_a,
-                                eta=eta, rounds=full_rounds, es=0, valid=None)
+                                eta=eta, rounds=full_rounds, es=0, valid=None,
+                                objective=objective, alpha=alpha)
 
     f_r = apply_priors(pl.read_parquet(feat_dir / "ranking.parquet"), priors_a)
     f_r = apply_group_encodings(f_r, genc_a)
@@ -317,7 +366,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     _write_report(ev, name, engine, sub, meta=dict(
         eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,
-        valid_month=valid_month))
+        valid_month=valid_month, loss=loss, huber_alpha=huber_alpha))
     print(f"total {time.time() - t0:.0f}s")
     return model, ev
 

@@ -31,6 +31,8 @@ TRAIN_GLOB = str(ROOT / "data" / "raw" / "training_2025-*.parquet")
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 OUT = ROOT / "cache" / "features"
 
+HOLDOUT_MONTHS = ("2025-01", "2025-07")
+
 FRAME_COLS = [
     "MVT_ID_mvt", "PHASE_mvt", "ADEP_mvt", "ADES_mvt", "MVT_TIME_UTC_mvt",
     "BLOCK_TIME_UTC_mvt", "SCHED_TIME_UTC_mvt", "AIRCRAFT_TYPE_mvt",
@@ -62,10 +64,19 @@ def main() -> None:
     )
     labels.write_parquet(OUT / "labels2025.parquet")
 
+    # Isolated two-month frame (just Jan+Jul 2025, no other months present) so
+    # holdout features see the same Jan->Jul discontinuity ranking.parquet
+    # actually has, instead of the continuous 12-month timeline train2025.parquet
+    # gives them. fit.py reads this for f_ho instead of slicing train2025.
+    frame_ho = frame.filter(
+        pl.col("MVT_TIME_UTC_mvt").dt.strftime("%Y-%m").is_in(HOLDOUT_MONTHS)
+    )
+    build_features(blind(frame_ho), priors=None).write_parquet(OUT / "holdout_gap2025.parquet")
+
     rank = pl.read_parquet(RANKING, columns=FRAME_COLS)
     build_features(blind(rank), priors=None).write_parquet(OUT / "ranking.parquet")
 
-    for f in ("train2025.parquet", "labels2025.parquet", "ranking.parquet"):
+    for f in ("train2025.parquet", "labels2025.parquet", "holdout_gap2025.parquet", "ranking.parquet"):
         p = OUT / f
         print(f"  {f:24} {p.stat().st_size / 1e6:6.1f} MB")
 
