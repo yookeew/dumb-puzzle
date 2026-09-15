@@ -39,6 +39,12 @@ from link.stand_link import build_stand_links  # noqa: E402
 # back-compat alias — earlier code imported the private name
 _apply_priors = apply_priors
 
+# Any bin-to-bin gap wider than this forces a runway-config "change" even if the
+# config string is unchanged — guards mins_since_cfg_change against bridging a
+# real data gap (e.g. ranking.parquet's Jan->Jul hole). Legitimate overnight
+# lulls at these airports are well under a day; only a missing-month gap crosses it.
+CFG_GAP_RESET_MIN = 24 * 60
+
 
 def _runway_time(df: pl.DataFrame) -> pl.DataFrame:
     """Best time the aircraft is on the runway: takeoff for DEP, landing for ARR."""
@@ -152,9 +158,19 @@ def _runway_config(frame: pl.DataFrame) -> pl.DataFrame:
         pl.col("n_active_dep_rwy").fill_null(0),
         pl.col("n_active_arr_rwy").fill_null(0),
     ).with_columns(
-        _chg=(
-            pl.col("dep_rwy_config") != pl.col("dep_rwy_config").shift(1)
+        # `frame` isn't guaranteed continuous (ranking.parquet bundles Jan+Jul with
+        # a 5-month hole between them) — without the gap check, a same-string
+        # config either side of the hole reads as "no change" and
+        # mins_since_cfg_change silently measures back across months of missing
+        # data instead of resetting.
+        _gap_min=(
+            (pl.col("bin") - pl.col("bin").shift(1)).dt.total_seconds() / 60.0
         ).over("airport"),
+    ).with_columns(
+        _chg=(
+            (pl.col("dep_rwy_config") != pl.col("dep_rwy_config").shift(1)).over("airport")
+            | (pl.col("_gap_min") > CFG_GAP_RESET_MIN)
+        ),
     ).with_columns(
         _grp=pl.col("_chg").fill_null(True).cum_sum().over("airport")
     ).with_columns(

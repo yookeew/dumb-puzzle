@@ -24,7 +24,11 @@
 # %%
 from models.fit import run
 
-# LightGBM (CPU on Colab is still faster than the laptop; ~5 min total)
+# LightGBM (CPU on Colab is still faster than the laptop; ~5 min total).
+# Default loss is huber (alpha=800) -- beat plain L2 on the gap-realistic
+# holdout (303.1s vs 309.2s), see reports/eval/lgb_colab_huber_a800.md. It
+# hadn't fully plateaued at the local ROUNDS ceiling (8000); worth pushing
+# rounds higher here where it's cheap to check whether it improves further.
 model, ev = run(engine="lgb", name="lgb_colab")
 
 # %%

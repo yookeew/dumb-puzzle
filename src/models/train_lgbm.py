@@ -115,26 +115,35 @@ def main() -> None:
     frame25 = pl.read_parquet(TRAIN_GLOB, columns=FRAME_COLS)
     feats25 = base_features(frame25, "train2025")
     lab25 = labels(frame25)
-    off25 = feats25.select("MVT_ID_mvt", "sched_takeoff_offset")
     print(f"loaded {feats25.height:,} DEP rows ({time.time() - t0:.0f}s)")
 
     is_ho = pl.col("ym").is_in(HOLDOUT_MONTHS)
     tr_lab, ho_lab = lab25.filter(~is_ho), lab25.filter(is_ho)
     priors = fit_priors(tr_lab)
 
-    def prep(lab_):
-        f = apply_priors(feats25.join(lab_.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
-        return f, f.select("MVT_ID_mvt").join(lab_, on="MVT_ID_mvt")
+    # Holdout features come from an isolated Jan+Jul frame, not a slice of feats25.
+    # feats25 is built on the continuous 12-month file, so slicing it after the
+    # fact would score features that never saw the Jan->Jul gap ranking.parquet
+    # actually has -- that mismatch is what let a real bug (mins_since_cfg_change
+    # bridging the gap) hide behind a good holdout RMSE. Building holdout features
+    # from just the two held-out months reproduces the real discontinuity.
+    frame_ho = frame25.filter(
+        pl.col("MVT_TIME_UTC_mvt").dt.strftime("%Y-%m").is_in(HOLDOUT_MONTHS)
+    )
+    feats_ho = base_features(frame_ho, "holdout_gap2025")
+    off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
 
-    f_tr, tr_lab = prep(tr_lab)
-    f_ho, ho_lab = prep(ho_lab)
+    f_tr = apply_priors(feats25.join(tr_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
+    tr_lab = f_tr.select("MVT_ID_mvt").join(tr_lab, on="MVT_ID_mvt")
+    f_ho = apply_priors(feats_ho.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
+    ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
     _, _, _, categories = matrix(f_tr)
 
     model, names = fit(f_tr, tr_lab, categories)
     print(f"fit done ({time.time() - t0:.0f}s)")
 
-    ho_off = ho_lab.join(off25, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
-    ev = ho_lab.join(off25, on="MVT_ID_mvt").with_columns(
+    ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
+    ev = ho_lab.join(off_ho, on="MVT_ID_mvt").with_columns(
         pred=pl.Series(predict_taxi(model, names, f_ho, ho_off, categories))
     ).filter(pl.col("taxi").is_between(0, 4 * 3600))
     report(ev)

@@ -11,7 +11,7 @@ file, gitignored, never committed) so nothing secret ever lands in the repo:
 See .env.example for the template.
 
 Usage:
-    python -m src.post.upload data/submissions/<team-name>_v1.parquet
+    python -m src.post.upload data/submissions/smart-jigsaw_v1.parquet
 """
 
 from __future__ import annotations
