@@ -44,6 +44,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FEAT_DIR = ROOT / "cache" / "features"
 SUB_DIR = ROOT / "data" / "submissions"
 REPORT_DIR = ROOT / "reports" / "eval"
+EVAL_CACHE_DIR = ROOT / "cache" / "eval"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 
 HOLDOUT_MONTHS = ("2025-01", "2025-07")
@@ -83,11 +84,20 @@ VALID_MONTH = "2025-06"
 
 # Echo classifier: P(BLOCK_TIME ~= SCHED_TIME), trained on the same feature
 # matrix as the d-regressor with label is_echo = |d| < _ECHO_ABS_D (see
-# features.encode). Binary classification converges much faster than the
-# huber regression on d, hence the smaller round budget.
-CLF_ROUNDS = 3000
-CLF_ETA = 0.05
-CLF_EARLY_STOP = 100
+# features.encode).
+# v1 (eta=0.05, 100-round patience) early-stopped at iter 174 -- too fast to
+# discriminate a 5.5%-positive-rate class well: even its own confidently-
+# flagged rows had 1987s RMSE (45% of LIRF's remaining error, see
+# PROGRESS.md). Slower eta + more patience, matching the main d-model's
+# cadence, gives it more rounds to actually separate the classes.
+# NOTE: also tried `is_unbalance=True` alongside this -- REGRESSION, reverted
+# (see PROGRESS.md): it reweights the training gradient toward the rare
+# class, but early stopping still watches plain binary_logloss on the
+# natural class balance, so validation loss looked like it was getting
+# worse from round 1 and stopped at iter 7 with zero predicted echoes.
+CLF_ROUNDS = 5000
+CLF_ETA = 0.02
+CLF_EARLY_STOP = 150
 CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic"}
 CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss"}
 
@@ -160,7 +170,8 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
 
 
-def _reconstruct_taxi(offset: np.ndarray, d_hat: np.ndarray, echo_prob: np.ndarray) -> np.ndarray:
+def _reconstruct_taxi(offset: np.ndarray, d_hat: np.ndarray, echo_prob: np.ndarray,
+                      use_prior: np.ndarray, prior_taxi: np.ndarray) -> np.ndarray:
     """taxi = offset - d_hat, clipped to [FLOOR, CEIL] -- blended toward the
     echo hypothesis taxi=offset (uncapped up to ECHO_WIDE_CEIL), weighted by
     `echo_prob`, an out-of-sample P(BLOCK_TIME ~= SCHED_TIME) estimate from a
@@ -175,10 +186,23 @@ def _reconstruct_taxi(offset: np.ndarray, d_hat: np.ndarray, echo_prob: np.ndarr
     EOBT_1/FLIGHT_ID, IOBT delay, hour, operator, stand, ...) instead of a
     single proxy, so it should have much higher recall on the true echo
     population without needing a hard population gate.
+
+    For NM-unmatched-but-not-echo rows (`use_prior`, caller-computed as
+    has_aobt3=False AND ADEP_mvt != LIRF -- see PROGRESS.md), fall back to
+    `prior_taxi` (median_taxi_prior) instead of trusting the regressor, which
+    has no operator/EOBT/IOBT signal for this lane. Two earlier attempts to
+    apply this fallback everywhere (including LIRF) both regressed: a flat
+    median hurt LIRF specifically (its NM-unmatched rows skew toward
+    larger-than-typical offsets), and an offset-anchored version
+    (clip(offset - airport_mean_d, ...)) was worse everywhere. The flat
+    median DOES help every other airport (LFPG -20s, EDDF -60s, EHAM -49s,
+    ...), so it's kept for everyone except LIRF via the `use_prior` mask.
     """
     taxi_model = np.clip(offset - d_hat, FLOOR, CEIL)
     taxi_echo = np.clip(offset, 0, ECHO_WIDE_CEIL)
-    return echo_prob * taxi_echo + (1 - echo_prob) * taxi_model
+    w_prior = (1 - echo_prob) * use_prior
+    w_model = (1 - echo_prob) * ~use_prior
+    return echo_prob * taxi_echo + w_prior * prior_taxi + w_model * taxi_model
 
 
 def fit_echo_classifier(engine: str, X_mat, d_raw: np.ndarray, tr_mask: np.ndarray,
@@ -457,7 +481,12 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
     echo_prob_ho = clf_pred(clf_model, Xho[names])
-    taxi_hat = _reconstruct_taxi(ho_off, pred_fn(model, Xho[names]), echo_prob_ho)
+    nm_unmatched_ho = f_ho["aobt3_taxi"].is_null().to_numpy()
+    not_lirf_ho = (f_ho["ADEP_mvt"] != "LIRF").to_numpy()
+    prior_taxi_ho = f_ho["median_taxi_prior"].to_numpy()
+    use_prior_ho = nm_unmatched_ho & not_lirf_ho & ~np.isnan(prior_taxi_ho)
+    taxi_hat = _reconstruct_taxi(ho_off, pred_fn(model, Xho[names]), echo_prob_ho,
+                                 use_prior_ho, np.nan_to_num(prior_taxi_ho))
 
     # Classifier sanity check BEFORE trusting the blend: precision/recall
     # against the true is_echo label (ho_lab row order matches f_ho/Xho since
@@ -481,10 +510,15 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         .with_columns(
             pred=pl.Series(taxi_hat),
             echo_pred=pl.Series(pred_echo),
+            echo_prob=pl.Series(echo_prob_ho),
         )
         .filter(pl.col("taxi") >= 0)
     )
     _report(ev)
+    # Persisted so follow-up lane/airport crosstabs don't need a full retrain
+    # -- see cache/eval/README or just query this directly.
+    EVAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    ev.write_parquet(EVAL_CACHE_DIR / f"{name}_holdout.parquet")
 
     if not submit:
         # holdout-only: skip the refit-on-all-2025 + ranking-predict + write
@@ -526,7 +560,12 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
     echo_prob_r = clf_pred_a(clf_model_a, Xr[names_a])
-    taxi_r = _reconstruct_taxi(r_off, pred_a(model_a, Xr[names_a]), echo_prob_r)
+    nm_unmatched_r = f_r["aobt3_taxi"].is_null().to_numpy()
+    not_lirf_r = (f_r["ADEP_mvt"] != "LIRF").to_numpy()
+    prior_taxi_r = f_r["median_taxi_prior"].to_numpy()
+    use_prior_r = nm_unmatched_r & not_lirf_r & ~np.isnan(prior_taxi_r)
+    taxi_r = _reconstruct_taxi(r_off, pred_a(model_a, Xr[names_a]), echo_prob_r,
+                               use_prior_r, np.nan_to_num(prior_taxi_r))
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     _write_report(ev, name, engine, sub, meta=dict(
         eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,

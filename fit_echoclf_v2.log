@@ -1,0 +1,11 @@
+holdout fit 994s  best_iter=7998  loss=huber
+echo clf fit 1048s  best_iter=7  base_rate=0.055
+echo clf holdout  precision=0.000  recall=0.000  n_true_echo=17349  n_pred_echo=0
+OVERALL RMSE 495.9 s  (n=344,339)
+  EDDF:368  EDDM:225  EGLL:316  EHAM:333  LEBL:298  LEMD:231  LFPG:619  LIRF:1298  LSZH:238  LTFM:300
+  2025-01:449  2025-07:531
+  False:3189  True:300
+  False:496
+wrote reports\eval\lgb_colab_echoclf.md
+total 1395s (holdout-only, no submission)
+EXIT_CODE=0

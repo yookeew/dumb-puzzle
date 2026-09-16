@@ -24,7 +24,7 @@ CAT_COLS = [
 # anything derived from the DEP off-block time (d, taxi) or split bookkeeping (ym)
 NON_FEATURES = {
     "MVT_ID_mvt", "T", "SOBT", "inbound_mvt_id", "sched_to_takeoff",
-    "d", "taxi", "ym",
+    "d", "taxi", "ym", "airport_mean_d",
 }
 
 _STAND_GROUP = pl.col("STAND_mvt").str.extract(r"^([A-Za-z]+)").fill_null("_")
@@ -164,7 +164,11 @@ def apply_group_encodings(df: pl.DataFrame, enc: dict[str, pl.DataFrame]) -> pl.
             pl.col(f"{name}_mean_d").fill_null(pl.col("_a_meand")),
             pl.col(f"{name}_n").fill_null(0),
         )
-    return d.drop("_a_echo", "_a_meand")
+    # airport_mean_d kept as a public column (NON_FEATURES-excluded, not fed
+    # to the model) -- an offset-anchored, NM-independent fallback taxi
+    # estimate (clip(offset - airport_mean_d, ...)) for rows with no NM
+    # flight-list match, see fit.py's _reconstruct_taxi.
+    return d.rename({"_a_meand": "airport_mean_d"}).drop("_a_echo")
 
 
 def add_group_encodings_oof(f_train: pl.DataFrame, lab: pl.DataFrame) -> pl.DataFrame:

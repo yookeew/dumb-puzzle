@@ -375,6 +375,101 @@ seconds of their local prediction — strong evidence the eval is fully
 trustworthy at this point (§6's fix was the real unlock; everything since
 has just been building on a metric that finally means what it says).
 
+## 9. LIRF diagnostic: where the remaining 883s comes from, and a classifier tuning pass
+
+Cross-tabbed the cached holdout eval frame (`cache/eval/lgb_colab_echoclf_holdout.parquet`,
+now persisted by `run()` so this kind of follow-up doesn't need a retrain)
+by `ADEP_mvt` x `echo_pred` x true `is_echo`. LIRF's 883s RMSE splits into:
+
+| segment | rmse | n | % of LIRF sq. error |
+|---|---|---|---|
+| confidently flagged echo (`echo_pred=True`) | 1987.3 | 2,379 | **45%** |
+| missed echoes (`echo_pred=False`, truly `is_echo`) | 1250.5 | 2,797 | **21%** |
+| genuine non-echo | 569.4 | 21,352 | **33%** (Jan 334.7 vs **Jul 855.0** — seasonal, matches `lirf_investigation.md`'s congestion-tail finding) |
+
+Two findings: (1) **66% of LIRF's remaining error is still classifier-driven**
+(low precision 0.688 + partial-confidence blending even on true positives,
+plus the missed-echo recall gap) — bigger lever than expected, no new
+features needed, just better classifier tuning. (2) the genuine 33% is real
+and July-concentrated, confirming the tail-congestion problem is separate
+and still unaddressed.
+
+**Tuning pass 1 — REGRESSION, reverted.** `CLF_ETA` 0.05→0.02, `CLF_ROUNDS`
+3000→5000, `CLF_EARLY_STOP` 100→150 (matches the main d-model's cadence),
+plus `is_unbalance=True` (lgb) / `scale_pos_weight` (xgb) for the ~5.5%
+positive rate. Result: **overall 397.3s → 495.9s, LIRF 883s → 1298s** —
+`best_iter=7`, `precision=recall=0.000`, zero rows predicted as echo.
+`is_unbalance` reweights the training gradient toward the rare class, but
+early stopping still watches plain `binary_logloss` on the natural class
+balance — that mismatch makes validation loss look like it's getting worse
+from round 1, so it stops almost immediately having learned nothing.
+**Reverted `is_unbalance`/`scale_pos_weight`**, kept the eta/rounds/patience
+change alone to isolate which part actually helped.
+
+**Tuning pass 2 — small real win, kept as default.** Eta/rounds/patience
+change alone (no class reweighting): **397.3s → 392.9s overall, LIRF
+883s → 857s**, no regressions. But `precision=0.694, recall=0.096` —
+barely moved from v1 (0.688/0.095). More patience/slower learning refined
+the confidently-flagged rows slightly; it did not fix the underlying
+recall gap. **Classifier hyperparameter tuning alone has hit diminishing
+returns** — real recall gains likely need new echo-specific features, not
+more knob-turning on the existing ones. **Decision: keep this tuning as
+the new default, but not submission-worthy on its own (~1% gain) — bank it
+and move to LIRF's genuine congestion tail (§8's other 33% bucket) next.**
+
+**Aside — checked whether this same fix applies to LFPG** (also high, 602s):
+**no, different mechanism.** LFPG's true echo rate is only 3.5% (near the
+non-LIRF baseline), and within its own `has_aobt3=False` lane (877 rows,
+2.2% of LFPG) only 4 are genuine echoes. The other **873 non-echo rows in
+that lane carry 3,630s RMSE — ~80% of LFPG's total squared error from 2.2%
+of rows**, even more concentrated than LIRF's echo problem, but the
+classifier correctly assigns them ~0 echo probability (nothing echo-shaped
+to catch). Seasonal pattern is inverted from LIRF too: this lane is worst
+in **January** (7,058s RMSE, 215 rows) vs July (1,096s, 662 rows) — opposite
+of LIRF's July-worst congestion, suggestive of winter weather/de-icing
+ground stops rather than a schedule artifact. Needs its own investigation
+(like `lirf_investigation.md`), not a reuse of the echo classifier. Not yet
+started.
+
+**NM-unmatched fallback for LIRF — TWO variants tried, BOTH regressed,
+reverted.** Diagnostic (cross-tabbing the cached eval frame further):
+`AIRCRAFT_OPERATOR_flt=null` (= `has_aobt3=False`, same 5,323-row population
+everywhere) carries **69% of LIRF's squared error from 1.5% of its rows**,
+and even correctly-classified non-echo rows in that lane score 4,594s RMSE —
+no operator/EOBT/IOBT signal for the regressor to use there. Tried replacing
+`taxi_model` with a fallback for exactly that slice (not echo, no NM match):
+- v1: flat `median_taxi_prior` (per stand/runway/airport). **Regression at
+  LIRF specifically** (857s → 901s) though it helped every other airport
+  (EDDF -60s, EHAM -49s, overall 392.9s → 383.7s) — LIRF's NM-unmatched rows
+  skew toward larger-than-typical offsets, so a flat median undershoots.
+- v2: offset-anchored `clip(offset - airport_mean_d, FLOOR, CEIL)` (using
+  the group encoding's already-clipped airport-level mean d instead of a
+  flat value) — theory was this preserves the real signal `offset` carries.
+  **Worse than v1 everywhere**, including LIRF (966s) and every other
+  airport (overall 671.7s) — confirmed via the `has_aobt3=True` lane staying
+  flat at 260s (proving the majority lane truly is unaffected) while
+  `has_aobt3=False` jumped 2288s → 4990s, dragging every airport's pooled
+  RMSE down since that lane exists everywhere.
+
+**Reverted both** to the echo_prob-only blend as an intermediate step. Added
+`airport_mean_d` as an available (NON_FEATURES-excluded) column in
+`encode.py` for potential future use, but not currently consumed.
+
+**v3 — gate the flat median fallback OFF for LIRF only, keep it everywhere
+else. VALIDATED, clean win.** v1's flat `median_taxi_prior` fallback helped
+*every* airport except LIRF (LFPG -20s, EDDF -60s, EHAM -49s, EDDM -13s,
+EGLL -16s, LEBL -33s, LEMD -17s, LSZH -5s, LTFM -3s) — it only regressed at
+LIRF specifically. Re-added the same flat-median fallback but with
+`use_prior` gated on `ADEP_mvt != "LIRF"` in addition to `has_aobt3=False`.
+Result: **392.9s → 376.0s overall**, LIRF unchanged at 857s (confirms exact
+exclusion), every other airport gets v1's gains, both months improved (Jan
+385→372, Jul 399→379), no regressions anywhere. **Current best state.**
+Directly addresses the LFPG finding above — its 873-row genuine-non-echo
+`has_aobt3=False` lane is exactly what this fallback targets.
+
+**Next: run the full pipeline and submit to confirm this transfers to the
+board**, same confirmation step as §7/§8.
+
 ## Code changes
 
 - `src/features/build_features.py` — `CFG_GAP_RESET_MIN` (24h) gap-aware
@@ -440,6 +535,10 @@ has just been building on a metric that finally means what it says).
 - `lgb_colab_echoclf` — P(echo) classifier, replaces the has_aobt3 gate
   (§8). **397.3s local → 376s actual.** Confirmed transfer, -84s real
   board improvement.
+- `lgb_colab_echoclf` (§9, LIRF-excluded median fallback) — **376.0s
+  local.** Full pipeline complete, submission file written:
+  `data/submissions/lgb_colab_echoclf.parquet` (344,841 rows, median 960s).
+  Not yet renamed/uploaded — ready to go.
 
 ## Next steps
 
