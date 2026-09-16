@@ -62,17 +62,19 @@ def report(df: pl.DataFrame, pred_col: str = "pred", true_col: str = "taxi") -> 
     overall = float(df.select(e.pow(2).mean()).item() ** 0.5)
     print(f"\nOVERALL RMSE: {overall:.2f} s   (n={df.height:,})")
 
-    for key, label in [("ADEP_mvt", "airport"), ("ym", "month")]:
+    for key, label in [("ADEP_mvt", "airport"), ("ym", "month"), ("has_aobt3", "AOBT_3_flt lane")]:
         if key not in df.columns:
             continue
         g = (
             df.group_by(key)
-            .agg(e.pow(2).mean().sqrt().alias("rmse"), pl.len().alias("n"))
+            .agg(e.pow(2).mean().sqrt().alias("rmse"), pl.len().alias("n"),
+                 (e.pow(2).sum() / df.select(e.pow(2).sum()).item() * 100).alias("pct_sqerr"))
             .sort(key)
         )
         print(f"\nper {label}:")
         for r in g.iter_rows(named=True):
-            print(f"  {str(r[key]):<10} rmse={r['rmse']:8.1f}  n={r['n']:,}")
+            print(f"  {str(r[key]):<10} rmse={r['rmse']:8.1f}  n={r['n']:,}  "
+                  f"({r['pct_sqerr']:.1f}% of total squared error)")
 
     dec = df.with_columns(
         ((pl.col(true_col).rank("ordinal") - 1) * 10 // pl.len()).alias("dq")

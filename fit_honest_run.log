@@ -1,0 +1,8 @@
+holdout fit 745s  best_iter=7998  loss=huber
+OVERALL RMSE 522.6 s  (n=344,339)
+  EDDF:290  EDDM:206  EGLL:303  EHAM:280  LEBL:264  LEMD:203  LFPG:602  LIRF:1509  LSZH:217  LTFM:278
+  2025-01:447  2025-07:576
+  False:3545  True:283
+wrote reports\eval\lgb_colab_honest.md
+total 919s (holdout-only, no submission)
+EXIT_CODE=0

@@ -31,6 +31,7 @@ import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from features.encode import (  # noqa: E402
+    _ECHO_ABS_D,
     add_group_encodings_oof,
     apply_group_encodings,
     apply_priors,
@@ -46,7 +47,25 @@ REPORT_DIR = ROOT / "reports" / "eval"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 
 HOLDOUT_MONTHS = ("2025-01", "2025-07")
+# CEIL=10800 (3h). TRIED raising this to 140000 on the theory that echo rows
+# (BLOCK_TIME ~= SCHED_TIME) have a correct, large true-taxi reconstruction
+# via sched_takeoff_offset that the ceiling was clipping away -- see
+# PROGRESS.md. REVERTED: it was a net regression (303.1s -> 560.7s holdout).
+# LightGBM's cumulative tree output can drift far from typical values for a
+# handful of unusual feature combinations, and 10800 was quietly acting as a
+# safety backstop against that for far more rows than just the genuine
+# echoes -- only 1 row actually hit the new 140000 ceiling, yet several
+# majority-lane airports (EDDF 290->1036s) got wrecked. A fix for the echo
+# lane needs to be targeted (flag likely-echo rows specifically), not a
+# blanket ceiling raise on every prediction.
 FLOOR, CEIL = 0, 10800
+# Sanity bound for the echo-hypothesis reconstruction only (see
+# _reconstruct_taxi) -- just above the max observed real label (131167s).
+# Never applied to the ordinary model reconstruction, only to the
+# echo_rate-weighted blend component, which is itself gated to the
+# has_aobt3=False lane -- this is the "targeted, not blanket" version of the
+# CEIL raise above that failed.
+ECHO_WIDE_CEIL = 140000
 LABEL_LO, LABEL_HI = 30, 7200
 
 # Training budget. ROUNDS is a ceiling — early stopping on an inner-validation
@@ -62,16 +81,27 @@ ETA = 0.02
 EARLY_STOP = 150
 VALID_MONTH = "2025-06"
 
+# Echo classifier: P(BLOCK_TIME ~= SCHED_TIME), trained on the same feature
+# matrix as the d-regressor with label is_echo = |d| < _ECHO_ABS_D (see
+# features.encode). Binary classification converges much faster than the
+# huber regression on d, hence the smaller round budget.
+CLF_ROUNDS = 3000
+CLF_ETA = 0.05
+CLF_EARLY_STOP = 100
+CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic"}
+CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss"}
+
 
 # --------------------------------------------------------------------- engines
 def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
-             objective="regression", alpha=None):
+             objective="regression", alpha=None, metric="rmse"):
     import lightgbm as lgb
 
     # metric stays rmse regardless of objective -- early stopping and reporting
     # always select on the competition metric, only the training gradient changes.
+    # (the echo classifier below passes metric="binary_logloss" instead.)
     params = dict(
-        objective=objective, metric="rmse", learning_rate=eta, num_leaves=255,
+        objective=objective, metric=metric, learning_rate=eta, num_leaves=255,
         min_data_in_leaf=100, feature_fraction=0.8, bagging_fraction=0.8,
         bagging_freq=1, max_bin=127, deterministic=True, force_row_wise=True,
         seed=seed, num_threads=0, verbose=-1,
@@ -95,7 +125,7 @@ def _fit_lgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 
 
 def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
-             objective="reg:squarederror", alpha=None):
+             objective="reg:squarederror", alpha=None, metric="rmse"):
     import xgboost as xgb
 
     try:
@@ -104,7 +134,7 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
         gpu = "cpu"
     dtrain = xgb.QuantileDMatrix(X, label=y, enable_categorical=True, max_bin=127)
     params = dict(
-        objective=objective, eval_metric="rmse", eta=eta, max_depth=10,
+        objective=objective, eval_metric=metric, eta=eta, max_depth=10,
         subsample=0.8, colsample_bytree=0.8, max_bin=127, device=gpu,
         tree_method="hist", seed=seed,
     )
@@ -130,6 +160,50 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
 
 
+def _reconstruct_taxi(offset: np.ndarray, d_hat: np.ndarray, echo_prob: np.ndarray) -> np.ndarray:
+    """taxi = offset - d_hat, clipped to [FLOOR, CEIL] -- blended toward the
+    echo hypothesis taxi=offset (uncapped up to ECHO_WIDE_CEIL), weighted by
+    `echo_prob`, an out-of-sample P(BLOCK_TIME ~= SCHED_TIME) estimate from a
+    dedicated classifier (see fit_echo_classifier / PROGRESS.md).
+
+    Supersedes the earlier has_aobt3-gated op_echo_rate heuristic: that
+    version only ever fired on the ~1.5% of rows missing an NM off-block time,
+    but LIRF alone echoes on ~18% of its rows (reports/lirf_investigation.md)
+    -- most of its echoes still have an AOBT_3_flt value and were sailing
+    straight through the ordinary clip(offset-d_hat, FLOOR, CEIL) path
+    unblended. The classifier sees the full feature set (missing AOBT_3/
+    EOBT_1/FLIGHT_ID, IOBT delay, hour, operator, stand, ...) instead of a
+    single proxy, so it should have much higher recall on the true echo
+    population without needing a hard population gate.
+    """
+    taxi_model = np.clip(offset - d_hat, FLOOR, CEIL)
+    taxi_echo = np.clip(offset, 0, ECHO_WIDE_CEIL)
+    return echo_prob * taxi_echo + (1 - echo_prob) * taxi_model
+
+
+def fit_echo_classifier(engine: str, X_mat, d_raw: np.ndarray, tr_mask: np.ndarray,
+                        va_mask: np.ndarray, cats: list[str], *, rounds=CLF_ROUNDS,
+                        eta=CLF_ETA, es=CLF_EARLY_STOP, seed=42):
+    """Fit P(is_echo) = P(|d| < _ECHO_ABS_D) on the same feature matrix used
+    for the d-regressor. `tr_mask`/`va_mask` follow the same convention as the
+    main fit in run() (`keep & ~iv` / `keep & iv`) but must NOT be filtered by
+    the [LABEL_LO, LABEL_HI] taxi-range `keep` mask -- echoes are exactly the
+    rows that mask tends to exclude (an echo's `d` is near zero, often below
+    LABEL_LO), so filtering by it would starve the classifier of positives.
+
+    Returns (model, predict_fn, best_iteration, is_echo) where `is_echo` is
+    the 0/1 array used as the training label, handy for the caller to report
+    a quick base-rate/recall sanity check.
+    """
+    fitter = ENGINES[engine]
+    is_echo = (np.abs(d_raw) < _ECHO_ABS_D).astype(np.float64)
+    model, predict_fn, best = fitter(
+        X_mat[tr_mask], is_echo[tr_mask], cats,
+        eta=eta, rounds=rounds, es=es, valid=(X_mat[va_mask], is_echo[va_mask]),
+        objective=CLF_OBJECTIVE[engine], metric=CLF_METRIC[engine], seed=seed)
+    return model, predict_fn, best, is_echo
+
+
 # ------------------------------------------------------------------ utilities
 def _matrix(feats, categories=None):
     """Model matrix as a pandas frame. Categorical columns carry a pandas
@@ -152,7 +226,9 @@ def _rmse(a, b):
 def _report(df: pl.DataFrame, pred="pred", true="taxi"):
     e = (pl.col(pred).cast(float) - pl.col(true).cast(float))
     print(f"OVERALL RMSE {df.select(e.pow(2).mean()).item() ** 0.5:.1f} s  (n={df.height:,})")
-    for key in ("ADEP_mvt", "ym"):
+    for key in ("ADEP_mvt", "ym", "has_aobt3", "echo_pred"):
+        if key not in df.columns:
+            continue
         g = df.group_by(key).agg(e.pow(2).mean().sqrt().alias("r"), pl.len().alias("n")).sort(key)
         print("  " + "  ".join(f"{r[key]}:{r['r']:.0f}" for r in g.iter_rows(named=True)))
 
@@ -207,7 +283,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
         f"- engine: **{engine}**   |   generated: {dt.datetime.now():%Y-%m-%d %H:%M}",
         train_line,
         f"- holdout = {', '.join(HOLDOUT_MONTHS)} (fit on the other 10 months of 2025)",
-        f"- rows scored: {n:,} (true taxi clipped to [0, 4h] for reporting)",
+        f"- rows scored: {n:,} (all true taxi >= 0; no upper-bound exclusion --"
+        f" the real board scores these rows too, see 'By AOBT_3_flt lane' below)",
         f"- target d clipped to [{LABEL_LO}, {LABEL_HI}] s in training; "
         f"taxi predictions clipped to [{FLOOR}, {CEIL}] s", "",
         "## Overall", "",
@@ -226,9 +303,40 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 
     g = ev.group_by("ym").agg(
         e.pow(2).mean().sqrt().alias("rmse"), pl.len().alias("n")).sort("ym")
-    L += ["## Per month", "",
+    L += ["## Per month (both must improve, not just the pooled number)", "",
           _md_table([(r["ym"], f"{r['rmse']:.1f}", f"{r['n']:,}")
                      for r in g.iter_rows(named=True)], ["month", "rmse", "n"]), ""]
+
+    if "has_aobt3" in ev.columns:
+        g = (ev.group_by("has_aobt3").agg(
+                e.pow(2).mean().sqrt().alias("rmse"), e.pow(2).mean().alias("sqerr"),
+                pl.len().alias("n"))
+             .with_columns((pl.col("sqerr") * pl.col("n")).alias("sq_total"))
+             .sort("has_aobt3", descending=True))
+        total_sq = g["sq_total"].sum()
+        L += ["## By AOBT_3_flt lane", "",
+              "Rows missing an NM off-block time are a small, high-leverage "
+              "population (echoes + schedule-default poison labels) that "
+              "behaves very differently from the rest -- see PROGRESS.md.", "",
+              _md_table([(bool(r["has_aobt3"]), f"{r['rmse']:.1f}", f"{r['n']:,}",
+                          f"{100*r['sq_total']/total_sq:.1f}%")
+                         for r in g.iter_rows(named=True)],
+                        ["has_aobt3", "rmse", "n", "% of total squared error"]), ""]
+
+    if "echo_pred" in ev.columns:
+        g = (ev.group_by("echo_pred").agg(
+                e.pow(2).mean().sqrt().alias("rmse"), e.pow(2).mean().alias("sqerr"),
+                pl.len().alias("n"))
+             .with_columns((pl.col("sqerr") * pl.col("n")).alias("sq_total"))
+             .sort("echo_pred", descending=True))
+        total_sq = g["sq_total"].sum()
+        L += ["## By echo classifier verdict (P(echo) > 0.5)", "",
+              "Supersedes the has_aobt3 lane above as the primary echo-lane "
+              "diagnostic -- see fit_echo_classifier / PROGRESS.md.", "",
+              _md_table([(bool(r["echo_pred"]), f"{r['rmse']:.1f}", f"{r['n']:,}",
+                          f"{100*r['sq_total']/total_sq:.1f}%")
+                         for r in g.iter_rows(named=True)],
+                        ["echo_pred", "rmse", "n", "% of total squared error"]), ""]
 
     dec = ev.with_columns(((pl.col("taxi").rank("ordinal") - 1) * 10 // pl.len()).alias("dq"))
     g = (dec.group_by("dq").agg(
@@ -287,7 +395,7 @@ HUBER_ALPHA = 800.0
 def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
-        loss: str = "huber", huber_alpha: float = HUBER_ALPHA):
+        loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True):
     t0 = time.time()
     fitter = ENGINES[engine]
     name = name or f"{engine}_colab"
@@ -337,12 +445,56 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         objective=objective, alpha=alpha)
     print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}  loss={loss}")
 
+    # Echo classifier: same X matrix as the d-regressor, NOT filtered by `keep`
+    # (see fit_echo_classifier). valid_d excludes the rare null-d rows.
+    valid_d = ~np.isnan(d_tr)
+    clf_tr_mask, clf_va_mask = valid_d & ~iv, valid_d & iv
+    clf_model, clf_pred, clf_best, is_echo_tr = fit_echo_classifier(
+        engine, Xtr, d_tr, clf_tr_mask, clf_va_mask, cats)
+    print(f"echo clf fit {time.time() - t0:.0f}s  best_iter={clf_best}  "
+          f"base_rate={is_echo_tr[valid_d].mean():.3f}")
+
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
-    taxi_hat = np.clip(ho_off - pred_fn(model, Xho[names]), FLOOR, CEIL)
-    ev = ho_lab.join(off_ho, on="MVT_ID_mvt").with_columns(pred=pl.Series(taxi_hat)).filter(
-        pl.col("taxi").is_between(0, 4 * 3600))
+    echo_prob_ho = clf_pred(clf_model, Xho[names])
+    taxi_hat = _reconstruct_taxi(ho_off, pred_fn(model, Xho[names]), echo_prob_ho)
+
+    # Classifier sanity check BEFORE trusting the blend: precision/recall
+    # against the true is_echo label (ho_lab row order matches f_ho/Xho since
+    # ho_lab was re-joined onto f_ho's MVT_ID_mvt above).
+    is_echo_ho = np.abs(ho_lab["d"].to_numpy()) < _ECHO_ABS_D
+    pred_echo = echo_prob_ho > 0.5
+    tp, fp = int((pred_echo & is_echo_ho).sum()), int((pred_echo & ~is_echo_ho).sum())
+    fn = int((~pred_echo & is_echo_ho).sum())
+    prec, rec = tp / max(tp + fp, 1), tp / max(tp + fn, 1)
+    print(f"echo clf holdout  precision={prec:.3f}  recall={rec:.3f}  "
+          f"n_true_echo={int(is_echo_ho.sum())}  n_pred_echo={int(pred_echo.sum())}")
+
+    # No upper-bound filter on true taxi here anymore -- a `taxi < 4h` cutoff used
+    # to hide the handful of rows (echoes with a huge sched-to-takeoff gap) that
+    # the real board almost certainly scores anyway. Only drop rows with a
+    # physically impossible negative/null true label.
+    has_aobt3 = f_ho.select("MVT_ID_mvt", has_aobt3=pl.col("aobt3_taxi").is_not_null())
+    ev = (
+        ho_lab.join(off_ho, on="MVT_ID_mvt")
+        .join(has_aobt3, on="MVT_ID_mvt")
+        .with_columns(
+            pred=pl.Series(taxi_hat),
+            echo_pred=pl.Series(pred_echo),
+        )
+        .filter(pl.col("taxi") >= 0)
+    )
     _report(ev)
+
+    if not submit:
+        # holdout-only: skip the refit-on-all-2025 + ranking-predict + write
+        # phase, which is the expensive half of a full run and pointless when
+        # we're only validating a change against the holdout, not submitting.
+        _write_report(ev, name, engine, None, meta=dict(
+            eta=eta, rounds=rounds, best_iter=best_it, valid_month=valid_month,
+            loss=loss, huber_alpha=huber_alpha))
+        print(f"total {time.time() - t0:.0f}s (holdout-only, no submission)")
+        return model, ev
 
     # refit on all 2025 + ranking submission, no early stopping — reuse the
     # iteration count early stopping found, nudged up for the larger data.
@@ -358,11 +510,23 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
                                 eta=eta, rounds=full_rounds, es=0, valid=None,
                                 objective=objective, alpha=alpha)
 
+    # echo classifier, refit on all 2025 labelled rows (not filtered by `keep`
+    # -- see fit_echo_classifier). No early stopping, same convention as model_a.
+    clf_full_rounds = max(200, int(round(clf_best * refit_scale)))
+    d_all = lab_a["d"].to_numpy()
+    valid_d_all = ~np.isnan(d_all)
+    is_echo_all = (np.abs(d_all) < _ECHO_ABS_D).astype(np.float64)
+    clf_model_a, clf_pred_a, _ = fitter(
+        Xall[valid_d_all], is_echo_all[valid_d_all], cats_a,
+        eta=CLF_ETA, rounds=clf_full_rounds, es=0, valid=None,
+        objective=CLF_OBJECTIVE[engine], metric=CLF_METRIC[engine])
+
     f_r = apply_priors(pl.read_parquet(feat_dir / "ranking.parquet"), priors_a)
     f_r = apply_group_encodings(f_r, genc_a)
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
-    taxi_r = np.clip(r_off - pred_a(model_a, Xr[names_a]), FLOOR, CEIL)
+    echo_prob_r = clf_pred_a(clf_model_a, Xr[names_a])
+    taxi_r = _reconstruct_taxi(r_off, pred_a(model_a, Xr[names_a]), echo_prob_r)
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     _write_report(ev, name, engine, sub, meta=dict(
         eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,
