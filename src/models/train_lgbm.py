@@ -43,7 +43,11 @@ ROOT = Path(__file__).resolve().parents[2]
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 CACHE = ROOT / "cache" / "features"
 
-FLOOR, CEIL = 0, 10800          # prediction clip: no positive floor
+# CEIL=10800. Raising this to 140000 to fix the echo-row clipping issue (see
+# PROGRESS.md) was tried and REVERTED -- net regression, LightGBM's cumulative
+# tree output drifts far from typical values for a handful of unrelated rows,
+# and 10800 was quietly protecting against that. See fit.py for the numbers.
+FLOOR, CEIL = 0, 10800
 LABEL_LO, LABEL_HI = 30, 7200   # drop poison + the most extreme tail from training
 ROUNDS = 1500
 
@@ -143,9 +147,15 @@ def main() -> None:
     print(f"fit done ({time.time() - t0:.0f}s)")
 
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
-    ev = ho_lab.join(off_ho, on="MVT_ID_mvt").with_columns(
-        pred=pl.Series(predict_taxi(model, names, f_ho, ho_off, categories))
-    ).filter(pl.col("taxi").is_between(0, 4 * 3600))
+    has_aobt3 = f_ho.select("MVT_ID_mvt", has_aobt3=pl.col("aobt3_taxi").is_not_null())
+    # No upper-bound filter on true taxi -- the real board scores those rows too;
+    # only drop physically impossible negative/null labels.
+    ev = (
+        ho_lab.join(off_ho, on="MVT_ID_mvt")
+        .join(has_aobt3, on="MVT_ID_mvt")
+        .with_columns(pred=pl.Series(predict_taxi(model, names, f_ho, ho_off, categories)))
+        .filter(pl.col("taxi") >= 0)
+    )
     report(ev)
 
     ref = tr_lab.filter(pl.col("taxi").is_between(60, 5400)).group_by("ADEP_mvt").agg(

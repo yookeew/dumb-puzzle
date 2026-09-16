@@ -1,0 +1,9 @@
+holdout fit 851s  best_iter=7998  loss=huber
+OVERALL RMSE 560.7 s  (n=344,339)
+  EDDF:1036  EDDM:209  EGLL:310  EHAM:670  LEBL:313  LEMD:203  LFPG:709  LIRF:788  LSZH:217  LTFM:278
+  2025-01:619  2025-07:509
+  False:3366  True:376
+wrote lgb_colab_ceilfix.parquet  n=344,841  median=959.0
+wrote reports\eval\lgb_colab_ceilfix.md
+total 2345s
+EXIT_CODE=0

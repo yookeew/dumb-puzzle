@@ -1,0 +1,9 @@
+holdout fit 1235s  best_iter=7998  loss=huber
+OVERALL RMSE 484.6 s  (n=344,339)
+  EDDF:302  EDDM:209  EGLL:303  EHAM:292  LEBL:274  LEMD:206  LFPG:606  LIRF:1320  LSZH:218  LTFM:279
+  2025-01:429  2025-07:525
+  False:3176  True:283
+wrote lgb_colab_echolane.parquet  n=344,841  median=960.0
+wrote reports\eval\lgb_colab_echolane.md
+total 3626s
+EXIT_CODE=0
