@@ -267,9 +267,113 @@ as well as LIRF's does — but nowhere near enough to offset the net win.
 Predicted max landed at 25,998s, well under the 140000 sanity bound,
 confirming the blend behaves conservatively rather than swinging wildly.
 
-**Status:** running the full pipeline now (`submit=True`) to produce a real
-submission and confirm this transfers to the actual board — local now
-tracks actual closely (§6), so this should be a trustworthy signal.
+**Status: CONFIRMED.** Submitted (as `smart-jigsaw_v7`, by file timestamp —
+generated 12:21, matches the echo-lane run exactly): **484.6s local → 460s
+actual**, a real **-41s** board improvement (matching the -38s local
+prediction almost exactly, slightly beating it). This is the first time all
+session that a local improvement transferred to the board at close to face
+value — direct confirmation that the local metric is now trustworthy (§6)
+and that this fix is real, not an artifact of the holdout split.
+
+(Note: `data/submissions/smart-jigsaw_v8.parquet` also exists, generated
+14:03 — before the §8 classifier work below started. Not something this
+session produced; flagging since its provenance isn't in this log.)
+
+## 8. LIRF still dominant after the echo-lane fix — moving to a proper P(echo) classifier
+
+Even after §7's fix, LIRF sits at **1320s RMSE vs 200-300s everywhere else**
+— a 4-6x gap that dwarfs every other remaining lever. Re-read
+`reports/lirf_investigation.md` (prior session's work) to ground the next
+step instead of re-deriving from scratch, per the discipline the CEIL-raise
+mistake in §6 taught us.
+
+**Why the echo-lane fix barely dented LIRF specifically:** that document
+found LIRF echoes (`BLOCK_TIME ≈ SCHED_TIME`) on **18.1%** of its rows —
+but §7's fix only ever fires on rows *missing `AOBT_3_flt`*, which is only
+~1.5% of rows overall (and a similarly small slice of LIRF). The other
+~16.6% of LIRF's departures echo the schedule while still *having* a valid
+`AOBT_3_flt` value, so they sail straight past the gate and get the
+ordinary `clip(offset - d_hat, 0, 10800)` treatment — wrong in exactly the
+way the fix was built to catch, just outside its narrow trigger condition.
+The investigation doc's own long-term recommendation was: *"an explicit
+echo probability feature ... and possibly a two-part model (P(echo) ×
+schedule-delay-taxi + (1−P) × normal-taxi)"* — which §7 approximates in
+spirit (single-signal, hard-gated) but not in the form actually recommended
+(multi-signal, continuous, ungated).
+
+**Decision (discussed with user):** build vs. a separate per-airport LIRF
+model — rejected. LIRF's error is a *mixture* of two processes (schedule-echo
+artifact + genuine congestion tail), and a full separate model would have to
+re-learn everything (distance, aircraft-type, congestion effects) from
+LIRF's own data alone, losing the cross-airport pooling the global model
+gets from the other 9 airports. This was already tried once in a different
+form — a per-airport residual head (`reports/stage3a_resid.md`) — and was a
+regression. A classifier targeting the specific mixture is the narrower,
+already-validated mechanism (§7 already works this way) extended to have
+much better recall.
+
+**Built:** `fit_echo_classifier()` (`fit.py`) — an OOF-style binary
+LightGBM classifier predicting `is_echo = |d| < 30s`, trained on the *same*
+feature matrix as the `d`-regressor (so it automatically has access to
+every signal the investigation doc flagged as predictive — missing
+AOBT_3/EOBT_1/FLIGHT_ID shows up as nulls in existing features, plus IOBT
+delay, hour, operator, stand — no new feature engineering needed). Its
+output replaces the `has_aobt3`-gated `op_echo_rate` weight in
+`_reconstruct_taxi`: now `taxi = P(echo)·offset + (1−P(echo))·model_pred`
+for **every** row, not just the missing-`AOBT_3_flt` lane.
+
+Trained on the training split only (mirrors the main model's train/valid
+split), with one important difference: **not** filtered by the
+`[LABEL_LO, LABEL_HI]` taxi-range mask the `d`-regressor uses — an echo's
+`d` is near zero (often *below* `LABEL_LO=30`), so that filter would starve
+the classifier of positives. Refit on all-2025 data for the final ranking
+submission the same way `model_a` is.
+
+**Risk, held in mind given §6's CEIL-raise mistake:** this opens the blend
+to a much larger population (≈18% of LIRF vs ≈1.5% before), so a
+false-positive-prone classifier could inject real damage on genuinely
+non-echo rows within that larger population. Mitigated by: (a) it's a soft
+probability blend, not a hard gate, (b) added a precision/recall sanity
+print and an `echo_pred` (P>0.5) lane to `_report`/`_write_report` so this
+is checked *before* trusting any RMSE number, matching the same
+validate-before-trust discipline that caught the CEIL regression.
+
+**Status: VALIDATED — large, clean win.** Holdout-only run (`lgb_colab_echoclf`):
+
+| | overall | LIRF | LFPG | d9 tail | 2025-01 | 2025-07 |
+|---|---|---|---|---|---|---|
+| §7 echo-lane (has_aobt3 gate) | 484.6s | 1320.1s | 605.9s | 1351.5s | 429.4s | 524.8s |
+| **§8 echo classifier** | **397.3s** | **883.1s** | **602.5s** | **1010.5s** | **383.6s** | **408.0s** |
+| Δ | **-87.3s (-18%)** | **-437.0s (-33%)** | -3.4s | -341.0s (-25%) | -45.8s | -116.8s |
+
+**Every airport improved or held flat — zero regressions**, both months
+improved (contestants' §5 discipline satisfied), and the tail decile (d9)
+dropped 25%. This is the single largest single-change win of the session,
+bigger than expected.
+
+Classifier diagnostics: `precision=0.688, recall=0.095` at the P>0.5
+threshold (n_true_echo=17,349, n_pred_echo=2,406) — it only *confidently*
+flags ~14% of true echoes, but those it does flag are right 69% of the
+time, and the actual blend uses the **continuous** probability (not a hard
+cutoff) for every row, so partial-confidence rows below 0.5 still get
+pulled partway toward the echo hypothesis — that's almost certainly why the
+overall gain is so much larger than the low recall alone would suggest.
+Room to improve recall further later (§ Next steps), but even at this
+recall level it clearly dominates the has_aobt3-gated heuristic: the
+`echo_pred=True` lane resolves at 1976s (2,406 rows) vs the old
+`has_aobt3=False` lane's 3176s (5,323 rows) — a smaller, more precisely
+targeted population with a much better resolved error.
+
+Only 33s of the ~896s total run was the classifier itself (`best_iter=174`)
+— cheap to include.
+
+**Status: CONFIRMED.** Submitted: **397.3s local → 376s actual**, a real
+**-84s** board improvement (predicted -87.3s — the tightest local/actual
+match of the whole session, ~4% off). Board total now **460s → 376s** since
+§7. Two consecutive changes have now transferred to the board within a few
+seconds of their local prediction — strong evidence the eval is fully
+trustworthy at this point (§6's fix was the real unlock; everything since
+has just been building on a metric that finally means what it says).
 
 ## Code changes
 
@@ -300,6 +404,17 @@ tracks actual closely (§6), so this should be a trustworthy signal.
   - `_reconstruct_taxi()` (§7): targeted echo-lane blend, gated to rows
     missing `AOBT_3_flt`, weighted by `op_echo_rate`. Validated net win
     (-38s holdout, majority lane untouched).
+  - (§8) `_reconstruct_taxi()` signature changed — takes an
+    explicit `echo_prob` array instead of deriving weight internally from
+    `has_aobt3`/`op_echo_rate`. New `fit_echo_classifier()` fits a binary
+    LightGBM/XGBoost classifier (`CLF_ROUNDS/CLF_ETA/CLF_EARLY_STOP/
+    CLF_OBJECTIVE/CLF_METRIC` constants) predicting `is_echo` on the same
+    feature matrix as the `d`-regressor; wired into `run()` for both the
+    holdout fit and the all-2025 refit. `_fit_lgb`/`_fit_xgb` gained a
+    `metric` kwarg (was hardcoded to `"rmse"`) so the classifier can train
+    with `binary_logloss`/`logloss` instead. Added an `echo_pred` (P>0.5)
+    lane to `_report`/`_write_report`, plus a console precision/recall
+    sanity check against the true `is_echo` label on the holdout.
 - `src/eval/holdout.py` — shared `report()` now also breaks down by
   `has_aobt3` when present, with % of total squared error per lane.
 - `notebooks/colab_train.py` — noted the Huber default and that it's worth
@@ -320,38 +435,45 @@ tracks actual closely (§6), so this should be a trustworthy signal.
   alpha=800 + eval-filter fix, CEIL back at 10800. **522.6s local — matches
   `smart-jigsaw_v6`'s 501s actual almost exactly.** This is the number to
   compare all future changes against.
-- `lgb_colab_echolane` — targeted echo-lane blend (§7). **484.6s local**
-  (matches the earlier holdout-only validation exactly — deterministic).
-  Full pipeline completed, submission file written:
-  `data/submissions/lgb_colab_echolane.parquet` (344,841 rows, pred range
-  0-29,056s). **Not yet renamed to `smart-jigsaw_vN` or uploaded** — ready
-  to go, waiting on a decision to actually submit it.
+- `lgb_colab_echolane` — targeted echo-lane blend (§7). **484.6s local
+  → 460s actual** (submitted as `smart-jigsaw_v7`, confirmed transfer).
+- `lgb_colab_echoclf` — P(echo) classifier, replaces the has_aobt3 gate
+  (§8). **397.3s local → 376s actual.** Confirmed transfer, -84s real
+  board improvement.
 
 ## Next steps
 
-1. **Confirm the echo-lane fix transfers to the real board** — full pipeline
-   running now (§7); submit the result once it lands and compare against
-   501s. With local now tracking actual closely, this should be a reliable
-   signal for the first time this session.
-2. If it transfers, look at whether the operator-echo-rate blend can be
-   improved for the airports that ticked up slightly (EDDF, EHAM, LEBL) —
-   e.g. stand-level echo rate instead of/alongside operator-level, or a
-   per-airport weight, rather than treating all `has_aobt3=False` rows
-   identically.
-3. Adopt the contestants' eval discipline going forward (see §5): Jan/Jul
-   both must improve, `has_aobt3` lane always reported, 2025-vs-2026
-   feature distribution check before trusting any new feature, multi-seed
+1. **LIRF still sits at 883s vs 200-300s elsewhere even after §8** — the
+   classifier's low recall (9.5% at P>0.5) means most true echoes are still
+   only partially corrected by the continuous blend, not fully. Two
+   candidate directions, not yet decided between:
+   - Push the classifier harder (more rounds/capacity, or a lower-recall
+     bottleneck check — is it feature-starved or just undertrained at only
+     `best_iter=174`?) to catch more of the 17,349 true echoes it's
+     currently missing at the 0.5 cutoff.
+   - Or: the remaining LIRF gap may now be dominated by the investigation
+     doc's *other*, unrelated problem — genuine congestion tail at runway
+     25, July, hours 08-14 — which no echo-detection change can touch and
+     needs separate treatment (congestion features, or revisit a
+     per-airport residual head now that the eval is honest and the loss is
+     Huber, both different from when it failed before, §6/stage3a_resid.md).
+   - Cheapest next step to tell these apart: break LIRF's remaining 883s
+     RMSE down by `echo_pred` lane specifically (not just airport-pooled) —
+     if the `echo_pred=False` LIRF rows are still much worse than
+     `echo_pred=False` rows elsewhere, that's congestion, not echo-recall.
+2. Adopt the contestants' eval discipline going forward (see §5): Jan/Jul
+   both must improve, echo-lane always reported, 2025-vs-2026 feature
+   distribution check before trusting any new feature, multi-seed
    significance check before trusting any gain, ignore gains from <100 rows.
-4. Ask on OSN Discord whether OpenSky ADS-B ground trajectories are
+3. Ask on OSN Discord whether OpenSky ADS-B ground trajectories are
    permitted — only for training-side feature engineering (2025), never
    for reconstructing the blanked 2026 ranking labels (that would be
-   leakage, not prediction). Potentially the one lever big enough to matter
-   if the `AOBT_3_flt` fix doesn't fully close the gap.
-5. Start scoping Stage 3b (queue refinement) — a structurally different
+   leakage, not prediction).
+4. Start scoping Stage 3b (queue refinement) — a structurally different
    modeling approach, not just another feature family.
-6. Weather ingest (NOAA ISD) — still worth doing, but recalibrated to
+5. Weather ingest (NOAA ISD) — still worth doing, but recalibrated to
    "minor lever" status (§4): expect low single digits, not a fix for the
    remaining gap. When we do it: prioritize temperature/dewpoint spread
    over a binary snow flag, and add an explicit null-rate/variance
    assertion after the join (§5).
-7. OSM routed taxi distance (Future Step B) — still deprioritized.
+6. OSM routed taxi distance (Future Step B) — still deprioritized.
