@@ -67,6 +67,19 @@ FLOOR, CEIL = 0, 10800
 # has_aobt3=False lane -- this is the "targeted, not blanket" version of the
 # CEIL raise above that failed.
 ECHO_WIDE_CEIL = 140000
+# LIRF-only relaxation of the base-model clip ceiling (see PROGRESS.md /
+# reports/lirf_investigation.md SS4-5). The blanket CEIL=140000 raise tried
+# in SS6 was a regression because raw taxi_model_raw > 10800 is tree-
+# extrapolation noise for every other airport (checked directly: raw RMSE
+# 8-84x worse than the clipped blend on EDDF/EDDM/EGLL/EHAM/LEBL/LFPG's
+# rare over-CEIL rows). LIRF is the opposite: its 22 holdout rows (0.08% of
+# LIRF, 54.5% of LIRF's total squared error under the old CEIL=10800) have
+# raw RMSE 16190 vs blend RMSE 21975 -- the raw prediction is *better*,
+# because LIRF is the only airport where genuine 10-24h+ ground delays
+# occur and a confident large raw prediction usually reflects that, not
+# extrapolation instability. Gated strictly on ADEP_mvt=="LIRF" so every
+# other airport's reconstruction is byte-identical to before.
+LIRF_RAW_CEIL = ECHO_WIDE_CEIL
 LABEL_LO, LABEL_HI = 30, 7200
 
 # Training budget. ROUNDS is a ceiling — early stopping on an inner-validation
@@ -173,10 +186,12 @@ ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
 
 def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
                        echo_prob: np.ndarray, use_prior: np.ndarray,
-                       prior_taxi: np.ndarray) -> np.ndarray:
+                       prior_taxi: np.ndarray, ceil=CEIL) -> np.ndarray:
     """taxi_model_raw (the regressor's own taxi estimate -- `offset - d_hat`
     for the flip target, or the direct taxi prediction as-is) clipped to
-    [FLOOR, CEIL] -- blended toward the echo hypothesis taxi=offset (uncapped
+    [FLOOR, ceil] (scalar CEIL=10800 by default; the caller passes a
+    per-row array with LIRF_RAW_CEIL for ADEP_mvt=="LIRF" rows -- see
+    LIRF_RAW_CEIL) -- blended toward the echo hypothesis taxi=offset (uncapped
     up to ECHO_WIDE_CEIL), weighted by `echo_prob`, an out-of-sample
     P(BLOCK_TIME ~= SCHED_TIME) estimate from a dedicated classifier (see
     fit_echo_classifier / PROGRESS.md).
@@ -206,7 +221,7 @@ def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
     also tried for LIRF and was worse than the flat median everywhere, so
     LIRF is just excluded via `use_prior` rather than given its own fallback.
     """
-    taxi_model = np.clip(taxi_model_raw, FLOOR, CEIL)
+    taxi_model = np.clip(taxi_model_raw, FLOOR, ceil)
     taxi_echo = np.clip(offset, 0, ECHO_WIDE_CEIL)
     w_prior = (1 - echo_prob) * use_prior
     w_model = (1 - echo_prob) * ~use_prior
@@ -512,18 +527,23 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     not_lirf_ho = (f_ho["ADEP_mvt"] != "LIRF").to_numpy()
     prior_taxi_ho = np.nan_to_num(f_ho["median_taxi_prior"].to_numpy())
     use_prior_ho = nm_unmatched_ho & not_lirf_ho & ~np.isnan(prior_taxi_ho)
+    ceil_ho = np.where(not_lirf_ho, CEIL, LIRF_RAW_CEIL)
 
     def _recon_ho(t):
         m, pf, _ = fits[t]
         raw = pf(m, Xho[names])
         raw_taxi = (ho_off - raw) if t == "flip" else raw
-        return _reconstruct_taxi(ho_off, raw_taxi, echo_prob_ho, use_prior_ho, prior_taxi_ho)
+        return (_reconstruct_taxi(ho_off, raw_taxi, echo_prob_ho, use_prior_ho,
+                                   prior_taxi_ho, ceil_ho), raw_taxi)
 
     if target == "mixed":
         is_lirf_ho = (f_ho["ADEP_mvt"] == "LIRF").to_numpy()
-        taxi_hat = np.where(is_lirf_ho, _recon_ho("flip"), _recon_ho("direct"))
+        recon_flip, raw_flip = _recon_ho("flip")
+        recon_direct, raw_direct = _recon_ho("direct")
+        taxi_hat = np.where(is_lirf_ho, recon_flip, recon_direct)
+        taxi_model_raw_diag = np.where(is_lirf_ho, raw_flip, raw_direct)
     else:
-        taxi_hat = _recon_ho(target)
+        taxi_hat, taxi_model_raw_diag = _recon_ho(target)
 
     # Classifier sanity check BEFORE trusting the blend: precision/recall
     # against the true is_echo label (ho_lab row order matches f_ho/Xho since
@@ -547,6 +567,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         .with_columns(
             pred=pl.Series(taxi_hat),
             echo_pred=pl.Series(pred_echo),
+            echo_prob=pl.Series(echo_prob_ho),
+            is_echo=pl.Series(is_echo_ho),
+            taxi_model_raw=pl.Series(taxi_model_raw_diag),
+            use_prior=pl.Series(use_prior_ho),
         )
         .filter(pl.col("taxi") >= 0)
     )
@@ -603,12 +627,13 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     not_lirf_r = (f_r["ADEP_mvt"] != "LIRF").to_numpy()
     prior_taxi_r = np.nan_to_num(f_r["median_taxi_prior"].to_numpy())
     use_prior_r = nm_unmatched_r & not_lirf_r & ~np.isnan(prior_taxi_r)
+    ceil_r = np.where(not_lirf_r, CEIL, LIRF_RAW_CEIL)
 
     def _recon_r(t):
         m_a, p_a = fits_a[t]
         raw = p_a(m_a, Xr[names_a])
         raw_taxi = (r_off - raw) if t == "flip" else raw
-        return _reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r)
+        return _reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r, ceil_r)
 
     if target == "mixed":
         is_lirf_r = (f_r["ADEP_mvt"] == "LIRF").to_numpy()
