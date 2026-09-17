@@ -375,6 +375,73 @@ seconds of their local prediction — strong evidence the eval is fully
 trustworthy at this point (§6's fix was the real unlock; everything since
 has just been building on a metric that finally means what it says).
 
+## 9. Re-tested flip-vs-direct target under the honest (post-§8) eval — mixed result, NOT adopted
+
+`fix-RMSE` (a since-abandoned branch) found direct taxi prediction beating
+the flip-then-reconstruct target by ~11-12% on two separate holdouts. That
+result was measured under the *old*, buggy eval (§6's `taxi < 4h` filter),
+which happened to exclude almost exactly the echo population where the
+flip's reconstruction gets a free structural advantage (`taxi_hat =
+offset - d_hat` reproduces `taxi ≈ offset` automatically whenever
+`d_hat ≈ 0`, no learning required — direct has no such shortcut). §8's
+`_reconstruct_taxi` now blends toward `taxi = offset` explicitly via the
+P(echo) classifier for **either** target, so the old advantage was expected
+to shrink, hold, or reverse. Re-tested cleanly instead of porting the old
+numbers.
+
+**Change:** `run()` gained a `target: "flip" | "direct"` param (`fit.py`).
+`target="direct"` fits the regressor on `taxi` directly instead of `d`;
+`_reconstruct_taxi` was made target-agnostic (takes the model's own taxi
+estimate directly, no longer assumes `offset - d_hat` internally). Also
+added a `seed` param to `run()`, threaded to the main regressor fit only,
+to support the significance check below — previously hardcoded to 42.
+
+**Sanity check:** `target="flip"` reproduces `lgb_colab_echoclf` (§8)
+exactly — 397.3s overall, LIRF 883.4s, LFPG 602.3s, d9 tail 1010.4s,
+2025-01 383.6s, 2025-07 408.1s. Confirms the `_reconstruct_taxi` refactor
+is behavior-preserving.
+
+**Result, two seeds (42 and 7 — near-identical, so not a single-run fluke):**
+
+| | flip (§8, seed 42) | flip (seed 7) | direct (seed 42) | direct (seed 7) |
+|---|---|---|---|---|
+| overall | 397.3s | 399.5s | **383.9s** | **383.7s** |
+| 2025-01 | 383.6s | 384.0s | **364.0s** | **363.7s** |
+| 2025-07 | 408.1s | 411.5s | **399.2s** | **399.0s** |
+| LIRF | **883.4s** | **885.1s** | 938.5s | 937.9s |
+| LFPG | 602.3s | 602.4s | **579.7s** | **579.4s** |
+| d9 tail (taxi 1505-88132s) | **1010.4s** | — | 1053.0s | — |
+| `echo_pred=True` lane (n=2,406) | **1976.5s** | **1981.2s** | 2118.2s | 2117.1s |
+| holdout fit wall time | 534-469s (best_iter hit the 8000 ceiling) | | **173-154s** (best_iter 2811/2405) | |
+
+Direct wins overall (-3.4%) and on **both** months (contestants' §5
+discipline satisfied) and on 9/10 airports, and converges ~3x faster
+(never hits the round ceiling, unlike flip). But it **loses, consistently
+across both seeds**, on exactly the population §8 was built to fix: the
+`echo_pred=True` lane is +141s/+7.2% worse (n=2,406 — not a <100-row
+fluke), LIRF (the project's single largest remaining error source, current
+Next-Steps item #1) is +55s/+6% worse, and the d9 tail is +43s worse. The
+`has_aobt3=False` proxy lane (coarser, superseded by `echo_pred`) actually
+*improves* under direct (2390.7s → 2282.1s) — so direct's regression is
+specific to the high-confidence echo-classified subset, not the broader
+missing-AOBT_3 population.
+
+**Not the clean win the task was hoping for.** Overall board RMSE would
+likely improve, but at the cost of the exact metric currently under active
+work (§8's Next Steps item 1 is "LIRF still sits at 883s ... needs a
+targeted fix") — adopting `target="direct"` now would work against that
+effort, not with it. **Not adopted; no submission produced.** Flagging for
+a decision rather than picking unilaterally: either (a) stay on flip and
+keep chasing LIRF via classifier recall (§8's own next step), or (b) adopt
+direct for the overall gain and treat LIRF/echo as a now-separate problem
+to solve on top of it (e.g. a stronger echo blend specific to the direct
+target). The `target` param is in `fit.py` either way, so this is a
+one-line switch whenever a decision is made — no code changes needed to
+revisit.
+
+The `test_flip*`/`test_direct*` holdout reports are in `reports/eval/`;
+no submission files were produced (`submit=False` throughout).
+
 ## Code changes
 
 - `src/features/build_features.py` — `CFG_GAP_RESET_MIN` (24h) gap-aware
@@ -415,6 +482,14 @@ has just been building on a metric that finally means what it says).
     with `binary_logloss`/`logloss` instead. Added an `echo_pred` (P>0.5)
     lane to `_report`/`_write_report`, plus a console precision/recall
     sanity check against the true `is_echo` label on the holdout.
+  - (§9) `run()` gained a `target: "flip" | "direct"` param (default
+    `"flip"`, unchanged behavior) and a `seed` param (default 42, matches
+    the prior hardcoded value). `_reconstruct_taxi()` made target-agnostic:
+    renamed its `d_hat` arg to `taxi_model_raw` and dropped the internal
+    `offset - d_hat` subtraction — `run()` now computes that estimate
+    itself (`offset - raw_pred` for flip, `raw_pred` as-is for direct)
+    before calling it. Echo classifier untouched (still always trained on
+    `d`, independent of `target`).
 - `src/eval/holdout.py` — shared `report()` now also breaks down by
   `has_aobt3` when present, with % of total squared error per lane.
 - `notebooks/colab_train.py` — noted the Huber default and that it's worth
@@ -440,9 +515,24 @@ has just been building on a metric that finally means what it says).
 - `lgb_colab_echoclf` — P(echo) classifier, replaces the has_aobt3 gate
   (§8). **397.3s local → 376s actual.** Confirmed transfer, -84s real
   board improvement.
+- `candidate_direct_v1` (§9) — `target="direct"`, full pipeline
+  (`data/submissions/candidate_direct_v1.parquet`, 344,841 rows, integrity
+  checks pass). **383.9s local (-3.4% vs `lgb_colab_echoclf`'s 397.3s),
+  but +6% on LIRF and +7.2% on the echo lane specifically — not adopted,
+  see §9.** Distribution sane (median 963s vs echoclf's 962s, mean 1036s
+  vs 1042s, fewer rows pinned at the floor/ceiling: 1/38 vs 82/95).
+  **Generated for comparison only, not uploaded** — pending the §9 / Next
+  Steps #0 decision.
 
 ## Next steps
 
+0. **Decision needed: flip vs direct target (§9)** — `direct` beats `flip`
+   by -3.4% overall and on both months, reproducibly across two seeds, but
+   costs +6% on LIRF and +7.2% on the `echo_pred=True` lane specifically —
+   the exact population item 1 below is about. Not picked unilaterally;
+   `target=` is a one-line switch in `fit.py` either way. If item 1's
+   classifier-recall push lands well on `flip`, re-run this comparison
+   after — the gap may change once LIRF/echo is less of an open wound.
 1. **LIRF still sits at 883s vs 200-300s elsewhere even after §8** — the
    classifier's low recall (9.5% at P>0.5) means most true echoes are still
    only partially corrected by the continuous blend, not fully. Two
@@ -477,3 +567,90 @@ has just been building on a metric that finally means what it says).
    over a binary snow flag, and add an explicit null-rate/variance
    assertion after the join (§5).
 6. OSM routed taxi distance (Future Step B) — still deprioritized.
+
+## 10. Branch switch: ported the Rome fixes onto `target="direct"`, then found a better combination
+
+Switched to `test-direct-target-with-rome` (teammate's branch, built on top of
+the merged echo-classifier work via PR #5), where `run()` gained a
+`target="flip"|"direct"` option: `direct` fits the regressor on `taxi`
+itself instead of the `d`-flip. The branch already had the echo classifier
+and target-agnostic `_reconstruct_taxi`, but not the later session-2 work
+(classifier tuning, LIRF-excluded median fallback) — ported both over
+(`CLF_ETA`/`CLF_ROUNDS`/`CLF_EARLY_STOP` tuning, `use_prior`/`prior_taxi`
+params on `_reconstruct_taxi` gated on `has_aobt3=False AND ADEP_mvt !=
+LIRF`). Verified the port is exact: `target="flip"` holdout reproduces
+376.0s/LIRF 857s byte-for-byte.
+
+**Found while comparing the teammate's own `test_flip.md`/`test_direct.md`
+reports already on the branch:** `direct` beats `flip` on 8 of 10 airports
+individually (e.g. EDDF 231→193, EHAM 231→200, EDDM 193→190) but is *worse*
+at LIRF specifically (857s → 908s) — `flip`'s `d`-based inductive bias
+still wins for LIRF's harder echo/congestion mix, `direct`'s simpler target
+wins everywhere else.
+
+**Built `target="mixed"`:** fits BOTH regressors (each still pooled across
+all 10 airports — not a per-airport model, same training data both times),
+shares one echo classifier (target-independent), and picks the
+reconstruction per row by airport: `flip` for LIRF, `direct` everywhere
+else. Validated holdout-only:
+
+| target | overall | LIRF | everything else |
+|---|---|---|---|
+| flip + fixes | 376.0s | **857s** | worse |
+| direct + fixes | 379.3s | 908s | **better** (8/10 airports) |
+| **mixed** | **370.1s** | **857s** (= flip) | **=direct's numbers exactly** |
+
+Confirms the per-airport split works correctly (LIRF's number matches flip
+exactly, every other airport matches direct exactly) and **mixed beats both
+pure approaches** — both months improved too (Jan 365s, Jul 374s).
+`direct` also trains ~2-2.5x faster than `flip` (best_iter 3310 vs 7998,
+~315-450s vs ~650-900s wall time for the holdout fit) since it needs far
+fewer boosting rounds to plateau; `mixed` costs roughly the sum of both
+(not faster than either alone) since it fits both regressors, and the full
+submission-ready run will need two separate all-2025 refits (~1.5-1.8x a
+single-target full run, est. 45-60 min).
+
+**Status: holdout-validated (370.1s), full submission-ready run
+(`submit=True`) intentionally held off until tomorrow per user request —
+not yet run.**
+
+## 11. Full mixed-target run submitted — new best board score
+
+Ran the full submission-ready pipeline (`engine="lgb", target="mixed",
+submit=True`, `run_mixed_full.py`) — both regressors (flip + direct) fit on
+the train/valid split, echo classifier fit once, all three refit on full
+2025, ranking predicted. 2738s (~46 min) wall time. Holdout reproduced
+§10's number exactly (370.1s local — flip=857s LIRF, direct everywhere
+else). Independently re-verified submission integrity (row count vs
+`submitting.parquet`, `MVT_ID_mvt` set equality, zero nulls, zero
+negatives) outside `_write_submission`'s own asserts.
+
+Submitted as `smart-jigsaw_v11`: **370.1s local → 343s actual.** New best
+board score, beating `smart-jigsaw_v9`/`lgb_colab_echoclf`'s 376s by -33s
+(local predicted -27.2s from 397.3→370.1 — actual gain came in even larger
+than predicted, continuing the pattern since §8 of local changes
+transferring at or above face value).
+
+**Workflow decision (adopted going forward, per user):** `target="direct"`
+trains ~2-3x faster than `flip` (best_iter ~3310 vs ~7998, ~315-450s vs
+~650-900s holdout fit) and is what most day-to-day feature/tuning
+iteration should use for fast holdout-only signal. Reserve `target="mixed"`
+(fits both regressors) for final submission-quality runs only, since that's
+where flip's LIRF advantage (857s vs direct's 908s) actually pays for its
+~2x extra compute cost. Iterating on `direct` alone should still report the
+`echo_pred`/LIRF lanes so a direct-only change isn't silently regressing the
+population `mixed`'s flip half is covering for.
+
+**Next-step decision (2026-09-17): prioritize LIRF/LFPG over weather.**
+LIRF (857s) and LFPG (581s) are 3-15x every other airport's RMSE (next
+highest, EGLL, is 289s) and together are ~63% of total squared error
+against a combined ~35% of rows — still the single largest lever on the
+board. Weather was already downgraded to "minor lever, low single digits"
+in §4 (falsified-noise-floor finding) and stays deprioritized until the
+Rome/Paris gap closes further. Concrete next move (cheapest diagnostic,
+per existing Next Steps #1): split LIRF's 857s by `echo_pred` lane
+specifically — if `echo_pred=False` LIRF rows are still much worse than
+`echo_pred=False` rows elsewhere, that's the unaddressed congestion tail
+(runway 25, July, hours 08-14, per `reports/lirf_investigation.md`), not an
+echo-recall problem; LFPG has no equivalent investigation doc yet and needs
+one started from scratch.
