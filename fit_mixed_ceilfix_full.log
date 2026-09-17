@@ -1,0 +1,13 @@
+holdout fit 1994s  best_iter=7998  loss=huber  target=flip
+holdout fit 2718s  best_iter=3310  loss=huber  target=direct
+echo clf fit 2847s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 337.6 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:661  LSZH:212  LTFM:268
+  2025-01:356  2025-07:322
+  False:1916  True:241
+  False:316  True:1470
+wrote smart-jigsaw_v12.parquet  n=344,841  median=960.0
+wrote reports\eval\smart-jigsaw_v12.md
+total 5606s
+EXIT_CODE=0
