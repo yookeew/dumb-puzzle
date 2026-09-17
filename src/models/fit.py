@@ -84,11 +84,21 @@ VALID_MONTH = "2025-06"
 
 # Echo classifier: P(BLOCK_TIME ~= SCHED_TIME), trained on the same feature
 # matrix as the d-regressor with label is_echo = |d| < _ECHO_ABS_D (see
-# features.encode). Binary classification converges much faster than the
-# huber regression on d, hence the smaller round budget.
-CLF_ROUNDS = 3000
-CLF_ETA = 0.05
-CLF_EARLY_STOP = 100
+# features.encode).
+# v1 (eta=0.05, 100-round patience) early-stopped at iter 174 -- too fast to
+# discriminate a 5.5%-positive-rate class well: even its own confidently-
+# flagged rows had 1987s RMSE (a large share of LIRF's remaining error, see
+# PROGRESS.md). Slower eta + more patience, matching the main model's
+# cadence, gives it more rounds to actually separate the classes -- a real
+# but small win (397.3s -> 392.9s holdout overall, LIRF 883 -> 857s).
+# NOTE: also tried `is_unbalance=True` alongside this -- REGRESSION, do not
+# re-add (see PROGRESS.md): it reweights the training gradient toward the
+# rare class, but early stopping still watches plain binary_logloss on the
+# natural class balance, so validation loss looked like it was getting
+# worse from round 1 and stopped at iter 7 with zero predicted echoes.
+CLF_ROUNDS = 5000
+CLF_ETA = 0.02
+CLF_EARLY_STOP = 150
 CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic"}
 CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss"}
 
@@ -162,7 +172,8 @@ ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
 
 
 def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
-                       echo_prob: np.ndarray) -> np.ndarray:
+                       echo_prob: np.ndarray, use_prior: np.ndarray,
+                       prior_taxi: np.ndarray) -> np.ndarray:
     """taxi_model_raw (the regressor's own taxi estimate -- `offset - d_hat`
     for the flip target, or the direct taxi prediction as-is) clipped to
     [FLOOR, CEIL] -- blended toward the echo hypothesis taxi=offset (uncapped
@@ -183,10 +194,23 @@ def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
     EOBT_1/FLIGHT_ID, IOBT delay, hour, operator, stand, ...) instead of a
     single proxy, so it should have much higher recall on the true echo
     population without needing a hard population gate.
+
+    For NM-unmatched-but-not-echo rows (`use_prior`, caller-computed as
+    has_aobt3=False AND ADEP_mvt != LIRF -- see PROGRESS.md), fall back to
+    `prior_taxi` (median_taxi_prior) instead of trusting the regressor, which
+    has no operator/EOBT/IOBT signal for this lane. A flat median fallback
+    helps every airport (LFPG -20s, EDDF -60s, EHAM -49s, ... on the holdout)
+    EXCEPT LIRF specifically -- its NM-unmatched rows skew toward
+    larger-than-typical offsets, so a flat median undershoots there. An
+    offset-anchored alternative (clip(offset - airport_mean_d, ...)) was
+    also tried for LIRF and was worse than the flat median everywhere, so
+    LIRF is just excluded via `use_prior` rather than given its own fallback.
     """
     taxi_model = np.clip(taxi_model_raw, FLOOR, CEIL)
     taxi_echo = np.clip(offset, 0, ECHO_WIDE_CEIL)
-    return echo_prob * taxi_echo + (1 - echo_prob) * taxi_model
+    w_prior = (1 - echo_prob) * use_prior
+    w_model = (1 - echo_prob) * ~use_prior
+    return echo_prob * taxi_echo + w_prior * prior_taxi + w_model * taxi_model
 
 
 def fit_echo_classifier(engine: str, X_mat, d_raw: np.ndarray, tr_mask: np.ndarray,
@@ -406,12 +430,19 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
         loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
         target: str = "flip", seed: int = 42):
-    """target="flip" (default) fits the regressor on pushback delay `d` and
-    reconstructs taxi = offset - d_hat. target="direct" fits the regressor on
-    `taxi` itself, skipping the reconstruction subtraction (the echo blend in
-    _reconstruct_taxi still applies either way -- see its docstring)."""
-    if target not in ("flip", "direct"):
-        raise ValueError(f"target must be 'flip' or 'direct', got {target!r}")
+    """target="flip" fits the regressor on pushback delay `d` and reconstructs
+    taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
+    itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
+    (each still pooled across all 10 airports, exactly like the other two --
+    NOT a per-airport model) and picks per-row by airport at reconstruction
+    time: flip for LIRF, direct everywhere else. On the holdout, flip beats
+    direct at LIRF by ~6% (857s vs 908s) while direct beats flip on every
+    other airport (e.g. EDDF 231->193, EHAM 231->200) -- see PROGRESS.md.
+    The echo blend in _reconstruct_taxi applies identically regardless of
+    target."""
+    if target not in ("flip", "direct", "mixed"):
+        raise ValueError(f"target must be 'flip', 'direct', or 'mixed', got {target!r}")
+    targets_to_fit = ("flip", "direct") if target == "mixed" else (target,)
     t0 = time.time()
     fitter = ENGINES[engine]
     name = name or f"{engine}_colab"
@@ -455,12 +486,15 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     if not iv.any():
         raise ValueError(f"valid_month {valid_month!r} not in training months")
     tr_mask, va_mask = keep & ~iv, keep & iv
-    y_tr = d_tr if target == "flip" else taxi_tr
-    model, pred_fn, best_it = fitter(
-        Xtr[tr_mask], y_tr[tr_mask], cats,
-        eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], y_tr[va_mask]),
-        objective=objective, alpha=alpha, seed=seed)
-    print(f"holdout fit {time.time() - t0:.0f}s  best_iter={best_it}  loss={loss}  target={target}")
+    fits = {}
+    for t in targets_to_fit:
+        y_tr = d_tr if t == "flip" else taxi_tr
+        m, pf, bi = fitter(
+            Xtr[tr_mask], y_tr[tr_mask], cats,
+            eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], y_tr[va_mask]),
+            objective=objective, alpha=alpha, seed=seed)
+        print(f"holdout fit {time.time() - t0:.0f}s  best_iter={bi}  loss={loss}  target={t}")
+        fits[t] = (m, pf, bi)
 
     # Echo classifier: same X matrix as the d-regressor, NOT filtered by `keep`
     # (see fit_echo_classifier). valid_d excludes the rare null-d rows.
@@ -474,9 +508,22 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
     echo_prob_ho = clf_pred(clf_model, Xho[names])
-    raw_pred_ho = pred_fn(model, Xho[names])
-    taxi_model_raw_ho = (ho_off - raw_pred_ho) if target == "flip" else raw_pred_ho
-    taxi_hat = _reconstruct_taxi(ho_off, taxi_model_raw_ho, echo_prob_ho)
+    nm_unmatched_ho = f_ho["aobt3_taxi"].is_null().to_numpy()
+    not_lirf_ho = (f_ho["ADEP_mvt"] != "LIRF").to_numpy()
+    prior_taxi_ho = np.nan_to_num(f_ho["median_taxi_prior"].to_numpy())
+    use_prior_ho = nm_unmatched_ho & not_lirf_ho & ~np.isnan(prior_taxi_ho)
+
+    def _recon_ho(t):
+        m, pf, _ = fits[t]
+        raw = pf(m, Xho[names])
+        raw_taxi = (ho_off - raw) if t == "flip" else raw
+        return _reconstruct_taxi(ho_off, raw_taxi, echo_prob_ho, use_prior_ho, prior_taxi_ho)
+
+    if target == "mixed":
+        is_lirf_ho = (f_ho["ADEP_mvt"] == "LIRF").to_numpy()
+        taxi_hat = np.where(is_lirf_ho, _recon_ho("flip"), _recon_ho("direct"))
+    else:
+        taxi_hat = _recon_ho(target)
 
     # Classifier sanity check BEFORE trusting the blend: precision/recall
     # against the true is_echo label (ho_lab row order matches f_ho/Xho since
@@ -505,19 +552,19 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     )
     _report(ev)
 
+    best_iter_report = "/".join(f"{t}={fits[t][2]}" for t in targets_to_fit)
     if not submit:
         # holdout-only: skip the refit-on-all-2025 + ranking-predict + write
         # phase, which is the expensive half of a full run and pointless when
         # we're only validating a change against the holdout, not submitting.
         _write_report(ev, name, engine, None, meta=dict(
-            eta=eta, rounds=rounds, best_iter=best_it, valid_month=valid_month,
+            eta=eta, rounds=rounds, best_iter=best_iter_report, valid_month=valid_month,
             loss=loss, huber_alpha=huber_alpha, target=target))
         print(f"total {time.time() - t0:.0f}s (holdout-only, no submission)")
-        return model, ev
+        return fits, ev
 
     # refit on all 2025 + ranking submission, no early stopping — reuse the
     # iteration count early stopping found, nudged up for the larger data.
-    full_rounds = max(200, int(round(best_it * refit_scale)))
     priors_a = fit_priors(lab)
     f_all = apply_priors(feats, priors_a)
     lab_a = f_all.select("MVT_ID_mvt").join(lab, on="MVT_ID_mvt")
@@ -525,10 +572,16 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     genc_a = fit_group_encodings(lab_a)
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
-    y_all = lab_a["d"].to_numpy() if target == "flip" else lab_a["taxi"].to_numpy()
-    model_a, pred_a, _ = fitter(Xall[keep], y_all[keep], cats_a,
-                                eta=eta, rounds=full_rounds, es=0, valid=None,
-                                objective=objective, alpha=alpha, seed=seed)
+    d_all_lab = lab_a["d"].to_numpy()
+    taxi_all_lab = lab_a["taxi"].to_numpy()
+    fits_a = {}
+    for t in targets_to_fit:
+        full_rounds = max(200, int(round(fits[t][2] * refit_scale)))
+        y_all = d_all_lab if t == "flip" else taxi_all_lab
+        m_a, p_a, _ = fitter(Xall[keep], y_all[keep], cats_a,
+                             eta=eta, rounds=full_rounds, es=0, valid=None,
+                             objective=objective, alpha=alpha, seed=seed)
+        fits_a[t] = (m_a, p_a)
 
     # echo classifier, refit on all 2025 labelled rows (not filtered by `keep`
     # -- see fit_echo_classifier). No early stopping, same convention as model_a.
@@ -546,15 +599,31 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     Xr, _, _, _ = _matrix(f_r, cats_map)
     r_off = f_r["sched_takeoff_offset"].to_numpy()
     echo_prob_r = clf_pred_a(clf_model_a, Xr[names_a])
-    raw_pred_r = pred_a(model_a, Xr[names_a])
-    taxi_model_raw_r = (r_off - raw_pred_r) if target == "flip" else raw_pred_r
-    taxi_r = _reconstruct_taxi(r_off, taxi_model_raw_r, echo_prob_r)
+    nm_unmatched_r = f_r["aobt3_taxi"].is_null().to_numpy()
+    not_lirf_r = (f_r["ADEP_mvt"] != "LIRF").to_numpy()
+    prior_taxi_r = np.nan_to_num(f_r["median_taxi_prior"].to_numpy())
+    use_prior_r = nm_unmatched_r & not_lirf_r & ~np.isnan(prior_taxi_r)
+
+    def _recon_r(t):
+        m_a, p_a = fits_a[t]
+        raw = p_a(m_a, Xr[names_a])
+        raw_taxi = (r_off - raw) if t == "flip" else raw
+        return _reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r)
+
+    if target == "mixed":
+        is_lirf_r = (f_r["ADEP_mvt"] == "LIRF").to_numpy()
+        taxi_r = np.where(is_lirf_r, _recon_r("flip"), _recon_r("direct"))
+    else:
+        taxi_r = _recon_r(target)
+
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
+    full_rounds_report = "/".join(
+        f"{t}={max(200, int(round(fits[t][2] * refit_scale)))}" for t in targets_to_fit)
     _write_report(ev, name, engine, sub, meta=dict(
-        eta=eta, rounds=rounds, best_iter=best_it, full_rounds=full_rounds,
+        eta=eta, rounds=rounds, best_iter=best_iter_report, full_rounds=full_rounds_report,
         valid_month=valid_month, loss=loss, huber_alpha=huber_alpha, target=target))
     print(f"total {time.time() - t0:.0f}s")
-    return model, ev
+    return fits_a, ev
 
 
 if __name__ == "__main__":
