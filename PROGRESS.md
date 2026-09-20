@@ -2198,5 +2198,229 @@ that are computed directly from the production `ev` frame, not from a
 fresh model fit, so they don't depend on `target` at all and re-running
 them under `mixed` would just reproduce the same bound with extra steps.
 
-Items 3-5 (queue, `ADES_mvt`, and a second weather seed, all under `mixed`)
-are running; results follow in the next entry once they land.
+**Two more ambient-cache bugs found and fixed before either rerun could
+produce a number.** Both `queue_test.py` and `ades_cat_test.py` (S23, S21)
+were written the same way `atfm_v1_test.py` was: treatment = `FEAT_DIR`
+as-is, baseline = `FEAT_DIR` with the family's columns dropped -- valid ONLY
+if the ambient shared cache already contains the family being tested. That
+was true when each was originally run (someone had rebuilt the cache with
+that family on first), but `cache/features/` has been rebuilt since (now
+weather=True, both families still off) -- so `FEAT_DIR` contains NEITHER
+queue nor `ADES_mvt` columns any more, and the "drop to get baseline" trick
+silently produces a baseline and treatment that are IDENTICAL (nothing to
+drop) rather than erroring.
+
+- `queue_test.py`: crashed loudly (`ColumnNotFoundError: q_ahead`) --
+  `_realised_queue` needs raw `AOBT_3_flt`/`PHASE_mvt`/`RUNWAY_mvt` that
+  aren't in the already-derived cached feature parquet at all, so there was
+  no column to silently keep. Fixed: treatment is now rebuilt from raw data
+  (`build_features(..., weather=True, queue=True)`, matching current
+  production flags plus queue), baseline is `FEAT_DIR` unchanged.
+- `ades_cat_test.py`: did NOT crash -- silently would have produced a
+  no-op comparison, the more dangerous failure mode, since `ADES_mvt` was
+  never in `CAT_COLS`/the base feature select at all (S21), so "keep it by
+  not dropping it" kept nothing. Fixed the same way: treatment rebuilds
+  `ADES_mvt` from raw and registers it in `encode.CAT_COLS` for the
+  duration of that one `run()` call only (via `try/finally`, restored
+  immediately after, production `encode.py` untouched on disk).
+- A third instance hit `metar_weather_test.py` itself once weather became
+  the production default (below) -- same root cause, opposite direction.
+
+Both fixes verified with a dry-run column check before spending compute on
+a full rerun (see commit/session notes). Lesson for future sessions: a
+test script that reads the shared `cache/features/` ambient state instead
+of asserting what it expects to find there will silently go stale the next
+time that cache is rebuilt for an unrelated reason. `metar_weather_test.py`
+now auto-detects which side of the comparison the ambient cache represents
+(S25) rather than assuming a fixed direction; `queue_test.py` and
+`ades_cat_test.py` now always rebuild their own treatment side from raw
+data rather than trusting the ambient cache for anything except the
+baseline.
+
+**3. Realised queue, rebuilt-treatment rerun under `mixed`.** Confirmed
+null, no config artifact:
+
+| | overall | 2025-01 | 2025-07 | LIRF |
+|---|---|---|---|---|
+| baseline | 335.9 | 353.9 | 320.7 | 655.1 |
+| treatment | 336.1 | 354.0 | 321.0 | 658.4 |
+| delta | +0.2 | +0.1 | +0.3 | **+3.2** |
+
+Paired cluster bootstrap: **+0.17s, 95% CI [-0.32, +0.64], P(worse)=0.758.**
+LIRF moved only +3.2s -- nowhere near weather's 33s swing -- so this is not
+a repeat of the `direct`-vs-`mixed` flip; S23's "not adopted" verdict holds
+under production config too. Queue-depth gradient (the original mechanism
+test) is still flat: -0.0 to -1.1s across `q_ahead` bins, no monotonic
+relationship. **Confirmed dead, not just under `direct`.**
+
+**4. `ADES_mvt`, rebuilt-treatment rerun under `mixed`.** Also null overall,
+but the mechanism behind the S21 rejection does NOT reproduce:
+
+| | overall | 2025-01 | 2025-07 | LIRF |
+|---|---|---|---|---|
+| baseline | 335.9 | 353.9 | 320.7 | 655.1 |
+| treatment | 335.9 | 354.6 | 319.9 | **651.4** |
+| delta | -0.1 | +0.7 | -0.8 | **-3.7** |
+
+Paired cluster bootstrap: **-0.07s, 95% CI [-2.99, +3.10], P(worse)=0.472**
+-- indistinguishable from a coin flip. **LIRF's S21 catastrophe (+78.1s
+under `direct`, `best_iter` collapsing 3310->2165) does not reproduce here**
+-- LIRF slightly improves (-3.7s) instead, confirming that specific number
+was a `direct`-target undertraining artifact, not something intrinsic to
+`ADES_mvt` as a feature. `best_iter` for the `direct` component still drops
+(3169->2485, the same undertraining signature) but LIRF routes through
+`flip` under `mixed` (7997->7994, untouched) so that damage no longer lands
+on the one airport that dominates total error. **But it doesn't just
+vanish either** -- it resurfaces as a small, consistent regression spread
+across 8 of 9 non-LIRF airports (EDDF +0.7, EDDM +0.6, EGLL +2.0, EHAM +0.7,
+LEBL +0.3, LFPG +0.7, LSZH +1.3; only LTFM improves, -0.6), which roughly
+cancels LIRF's improvement. Answers the pre-registered question precisely:
+the original headline number WAS a config artifact, but the feature is
+still dead -- for a materially different, smaller, more diffuse reason than
+S21 found (1,569-level undertraining spread thinly across the pooled model,
+not concentrated on one airport's tail). **Confirmed dead under `mixed`,
+not adopted, no further action.**
+
+**5. Weather, second seed (7) under `mixed`.** Also caught and fixed a
+third instance of the ambient-cache bug (item 2/3/4 above) here: once
+`weather=True` became the production default, `FEAT_DIR` silently already
+had the 16 weather columns baked in, so "baseline (no weather)" was
+actually reading weather-included data, and the treatment build then tried
+to left-join weather again onto it, colliding on `flight_category` and
+producing a stray `_right`-suffixed string column LightGBM can't train on
+(`ValueError: pandas dtypes must be int, float or bool`). Fixed:
+`metar_weather_test.py` now checks `_feat_dir_has_weather()` at runtime and
+builds whichever side (baseline or treatment) the ambient cache is
+currently missing, instead of assuming a fixed direction. Verified with a
+dry-run column check before rerunning.
+
+Reproduces and strengthens:
+
+| | seed 42 (original) | seed 7 |
+|---|---|---|
+| overall delta | -1.21s | **-1.73s** |
+| 95% CI | [-2.48, -0.13] | [-3.09, -0.61] |
+| P(worse) | 0.013 | **0.001** |
+| LIRF delta | -4.9s | -6.8s |
+| both months | yes (-1.6/-0.8) | yes (-2.1/-1.4) |
+
+**Number confirmed, not just seed-42 noise.** But per the pre-registered
+caveat about what a second seed can and can't show (noted in the S24
+correction before this ran): it confirms REPRODUCIBILITY, not attribution.
+The mechanism-share split moved, if anything, further toward "ordinary
+rows explain most of it" under this seed -- low_vis/VFR share is 51.1%/48.9%
+(vs seed 42's 59.2%/40.2%, already a bare majority), and the
+freezing/de-icing partitions are MORE ordinary-dominated (below_freezing
+share 18.9% vs 25.1%; deicing_risk share 12.6% vs 17.8%). The gain itself
+is robust across seeds; the "adverse conditions explain most of the gain"
+reading is not -- if anything it weakens on a second look. Logged honestly:
+**adopted for the RMSE gain, not as evidence the pre-registered de-icing/
+low-vis mechanism is the primary driver.**
+
+**Session tally (S25):** 3 of 3 reruns landed (queue confirmed dead, ADES
+confirmed dead via a different mechanism than originally measured, weather
+confirmed adopted and reproducible), plus 3 ambient-cache bugs found and
+fixed in the test harness before they could corrupt a result (one loud
+crash, one silent no-op that would have been worse, one crash from the
+adoption decision itself changing the ground truth mid-session). No change
+to the standing submission (`smart-jigsaw_v14`, weather adopted, queue and
+ADES stay off) -- this session's reruns confirmed the existing decisions
+were correct and better-understood, not something requiring a new
+submission.
+
+## 26. The unexplained half of the weather gain -- ablated by mechanism,
+    and a free LIRF noise-floor calibration (2026-09-20)
+
+Two follow-ups on S25's mechanism-attribution correction: (a) is the gain
+weather-as-operations or a seasonal/diurnal proxy the model's existing
+month/hour features encode weakly, and (b) how unusual is LIRF's
+sensitivity to config changes, calibrated against pure seed noise.
+
+**LIRF noise floor (free, from S25's existing seed42/seed7 logs -- no
+compute).** Same script, same config, only the seed differs, so the spread
+in LIRF's treatment-minus-baseline delta is a clean noise floor:
+
+| | seed 42 | seed 7 | \|diff\| |
+|---|---|---|---|
+| baseline (no weather) LIRF | 660.6 | 662.0 | 1.4s |
+| treatment (weather) LIRF | 655.7 | 655.2 | 0.5s |
+| delta (treat-base) | -4.9 | -6.8 | **1.9s <- noise floor** |
+
+Calibrated against this floor:
+- Weather's `direct`->`mixed` config swing on the delta (S25 item 1): 28.3s
+  -> -4.9s, a 33.2s swing = **17.5x the noise floor**. Confirms what S25
+  already argued structurally (deterministic direct-regressor fit, LIRF the
+  only airport whose reconstruction changes target) -- now with an
+  independent quantitative check: this is not something a different seed
+  could produce by chance.
+- Queue's LIRF delta (+3.3s, mixed only): **1.7x** the floor --
+  indistinguishable from noise. Consistent with queue's confirmed-null
+  verdict (S25 item 3).
+- `ADES_mvt`'s LIRF delta (-3.7s, mixed only): **1.9x** the floor -- also
+  indistinguishable from noise. Consistent with its confirmed-null verdict
+  (S25 item 4).
+
+**Cheap sanity check before any fit: weather columns vs month/hour.**
+Pearson correlation on the full `train2025.parquet` (N=2,085,047): all
+weak, |r|<=0.27 (`dewpoint_c` vs month strongest; `vis_mi`/`ceiling_ft`/
+`below_freezing`/`deicing_risk` all |r|<=0.08 against both month and hour).
+Nothing in the raw linear correlations screams "this is just calendar."
+But `flight_category`'s non-VFR rate has a real, large, physically sensible
+swing the correlation misses (threshold/tail effect, not a linear trend):
+**6.4% (June) -> 42.6% (December)** by month, **~14% (afternoon) -> 29%
+(night)** by hour (radiation fog). Not decisive either way -- proceeded to
+the ablation rather than skip it.
+
+**Ablation, three arms, same seed(42)/target(mixed), built by dropping
+columns from the (already weather-included) production cache**
+(`tests/metar_ablation_test.py`): baseline (no weather), adverse-only
+(`has_ceiling`, `vis_mi`, `ceiling_ft`, `below_freezing`, `deicing_risk`,
+`wx_snow`, `wx_freezing`, `wx_tstorm`, `wx_obscuration`, `flight_category`,
+`precip_1h_in` -- 11 cols), benign-only (`temp_c`, `dewpoint_c`,
+`temp_dewpoint_spread_c`, `wind_dir`, `wind_kt`, `gust_kt` -- 6 cols; no
+pressure column, never fetched -- see `fetch_metar_data.py`'s
+`DATA_FIELDS`). The two sets partition all 17 weather columns exactly.
+
+| arm | overall delta | 95% CI | P(worse) | LIRF delta |
+|---|---|---|---|---|
+| adverse-only | -0.78s | [-1.47, -0.12] | 0.008 | -1.6s |
+| benign-only | **-1.04s** | [-2.08, -0.17] | 0.010 | **-3.3s** |
+| combined (reference, S24/S25) | -1.21s | [-2.48, -0.13] | 0.013 | -4.9s |
+
+**Both arms are individually significant -- this is not "weather is fake."**
+But benign-only (temp/dewpoint/wind, ZERO visibility/ceiling/precipitation
+information) produces **57%** of the additive sum (1.04/1.82), adverse-only
+43%. Per the pre-registered decision rule, that's "most," but barely --
+same bare-majority pattern as every mechanism-share number in S24/S25 (59/41,
+51/49, 72/28, 83/17 depending on the partition). **Verdict: roughly half of
+the realized gain is NOT the de-icing/low-visibility-procedure mechanism
+this project assumed since CLAUDE.md's original feature-priority write-up
+-- it's more consistent with temp/dewpoint/wind acting as a smoother,
+higher-resolution seasonal signal than the coarse categorical `month`/
+`hour` features already in the model.** Physically sensible: `month` is a
+12-level categorical split, `temp_c` is continuous and tracks cold snaps/
+warm spells that don't align to month boundaries and vary within a month
+too -- exactly the "existing features encode it weakly" mechanism flagged
+as the thing to look for.
+
+Two secondary findings:
+- **Sub-additive**: adverse (-0.78s) + benign (-1.04s) = -1.82s vs the
+  combined set's actual -1.21s -- about 0.6s of the two subsets' gain
+  overlaps (physically plausible: freezing/de-icing and temperature are
+  mechanistically linked, so isolating either one partially captures the
+  other's signal too).
+- **LIRF's split is exactly additive** (-1.6 + -3.3 = -4.9, matching the
+  combined LIRF delta exactly) despite the overall set being sub-additive --
+  at these effect sizes (single-digit seconds on a 26,528-row lane) this is
+  more likely coincidence than a real distinction from the general
+  sub-additivity pattern; not chased further.
+
+**Not actioned as a code change** -- `weather=True` stays adopted as a
+whole family (splitting it into adverse/benign sub-families for separate
+on/off toggles would be over-engineering a ~1s partition question, and the
+combined set already outperforms either half alone). This is a mechanism
+finding for the paper-writing / honest-reporting obligation (CLAUDE.md's
+"paper framing: report the split... state plainly" instruction), not a
+lever to pull. Recorded so the eventual writeup doesn't claim weather was
+adopted for its de-icing/low-visibility mechanism when the ablation shows
+that's at most half the story.

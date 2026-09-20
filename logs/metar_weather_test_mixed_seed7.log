@@ -1,0 +1,77 @@
+=== FEAT_DIR already has weather: True -- dropping for baseline (target='mixed', seed=7) ===
+  train2025.parquet:
+  holdout_gap2025.parquet:
+  ranking.parquet:
+
+=== baseline (no weather) ===
+holdout fit 651s  best_iter=8000  loss=huber  target=flip
+holdout fit 871s  best_iter=2405  loss=huber  target=direct
+echo clf fit 932s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 337.6 s  (n=344,339)
+  EDDF:192  EDDM:191  EGLL:288  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:662  LSZH:212  LTFM:267
+  2025-01:356  2025-07:322
+  False:1917  True:241
+  False:316  True:1473
+wrote reports\eval\metar_baseline_mixed_seed7.md
+total 1156s (holdout-only, no submission)
+
+=== treatment (weather family 7 included) ===
+holdout fit 659s  best_iter=8000  loss=huber  target=flip
+holdout fit 924s  best_iter=3005  loss=huber  target=direct
+echo clf fit 989s  best_iter=430  base_rate=0.055
+echo clf holdout  precision=0.699  recall=0.096  n_true_echo=17349  n_pred_echo=2372
+OVERALL RMSE 335.9 s  (n=344,339)
+  EDDF:191  EDDM:187  EGLL:288  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:655  LSZH:210  LTFM:268
+  2025-01:354  2025-07:321
+  False:1906  True:240
+  False:320  True:1272
+wrote reports\eval\metar_treatment_mixed_seed7.md
+total 1215s (holdout-only, no submission)
+
+overall RMSE   baseline=337.6  treatment=335.9  delta=-1.7
+  2025-01: baseline=356.1  treatment=354.0  delta=-2.1
+  2025-07: baseline=322.0  treatment=320.6  delta=-1.4
+
+per airport (treatment - baseline RMSE):
+  EDDF   base=  192.3  treat=  191.1  delta=   -1.2  n=36,830
+  EDDM   base=  190.6  treat=  186.6  delta=   -4.0  n=27,091
+  EGLL   base=  288.5  treat=  288.4  delta=   -0.1  n=40,210
+  EHAM   base=  200.4  treat=  199.8  delta=   -0.6  n=40,949
+  LEBL   base=  224.0  treat=  223.9  delta=   -0.1  n=28,985
+  LEMD   base=  180.6  treat=  179.8  delta=   -0.8  n=35,328
+  LFPG   base=  580.9  treat=  579.1  delta=   -1.8  n=39,590
+  LIRF   base=  662.0  treat=  655.2  delta=   -6.8  n=26,528
+  LSZH   base=  211.6  treat=  209.6  delta=   -2.0  n=22,289
+  LTFM   base=  267.4  treat=  268.2  delta=   +0.7  n=46,539
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (treatment - baseline): -1.73s
+  95% CI: [-3.09, -0.61]
+  P(worse) = 0.001
+
+==============================================================================
+MECHANISM TEST -- pre-registered: gain must concentrate on low-vis / freezing conditions
+==============================================================================
+Each row also reports its SHARE OF THE TOTAL REALIZED GAIN (not an
+isolated hypothetical) -- for the three complementary pairs below
+(low_vis/VFR, freezing, deicing) each pair sums to ~100% by
+construction, since they partition all rows. A pre-registered
+mechanism claim needs the ADVERSE side to dominate this share, not
+just have the larger per-row delta -- a huge per-row effect on a
+tiny population can still lose the share to a tiny per-row effect
+on the 80-99% majority. Report both; don't call it a clean pass
+on the per-row delta alone (PROGRESS.md S24/S25).
+  low_vis (IFR/MVFR/LIFR)    n=68510    rows= 19.9%  base=  482.4  treat=  479.3  delta=   -3.1  share_of_total_gain= 51.1%
+  VFR (ordinary)             n=275829   rows= 80.1%  base=  290.7  treat=  289.5  delta=   -1.2  share_of_total_gain= 48.9%
+  below_freezing             n=13660    rows=  4.0%  base=  302.3  treat=  293.0  delta=   -9.3  share_of_total_gain= 18.9%
+  above freezing             n=330679   rows= 96.0%  base=  339.0  treat=  337.6  delta=   -1.5  share_of_total_gain= 81.1%
+  deicing_risk               n=1321     rows=  0.4%  base=  575.0  treat=  540.8  delta=  -34.1  share_of_total_gain= 12.6%
+  no deicing_risk            n=343018   rows= 99.6%  base=  336.4  treat=  334.9  delta=   -1.5  share_of_total_gain= 87.4%
+
+A uniform-looking per-row delta (both sides negative/positive by a similar
+amount) means the gain isn't concentrated and shouldn't be read as weather
+signal, same logic that rejected the queue feature (S23). But even a correctly
+concentrated per-row delta can still have most of its AGGREGATE share come from
+the majority population -- that's not a mechanism failure, just an honest
+accounting of where the realized RMSE gain actually comes from.

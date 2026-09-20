@@ -1,0 +1,67 @@
+=== building 3 ablation arms (target=mixed, seed=42) ===
+
+=== fitting baseline (no weather) ===
+holdout fit 975s  best_iter=7998  loss=huber  target=flip
+holdout fit 1260s  best_iter=3310  loss=huber  target=direct
+echo clf fit 1323s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 337.6 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:661  LSZH:212  LTFM:268
+  2025-01:356  2025-07:322
+  False:1916  True:241
+  False:316  True:1470
+wrote reports\eval\ablate_base.md
+total 1561s (holdout-only, no submission)
+
+=== fitting adverse-only (vis/ceiling/freezing/precip) ===
+holdout fit 650s  best_iter=7997  loss=huber  target=flip
+holdout fit 920s  best_iter=3169  loss=huber  target=direct
+echo clf fit 980s  best_iter=379  base_rate=0.055
+echo clf holdout  precision=0.696  recall=0.096  n_true_echo=17349  n_pred_echo=2395
+OVERALL RMSE 336.8 s  (n=344,339)
+  EDDF:192  EDDM:189  EGLL:289  EHAM:201  LEBL:224  LEMD:180  LFPG:579  LIRF:659  LSZH:210  LTFM:268
+  2025-01:355  2025-07:321
+  False:1914  True:240
+  False:314  True:1493
+wrote reports\eval\ablate_adverse.md
+total 1217s (holdout-only, no submission)
+
+=== fitting benign-only (temp/dewpoint/wind) ===
+holdout fit 680s  best_iter=7999  loss=huber  target=flip
+holdout fit 944s  best_iter=2810  loss=huber  target=direct
+echo clf fit 1009s  best_iter=376  base_rate=0.055
+echo clf holdout  precision=0.693  recall=0.096  n_true_echo=17349  n_pred_echo=2392
+OVERALL RMSE 336.5 s  (n=344,339)
+  EDDF:192  EDDM:187  EGLL:289  EHAM:200  LEBL:224  LEMD:180  LFPG:580  LIRF:657  LSZH:211  LTFM:268
+  2025-01:355  2025-07:321
+  False:1910  True:240
+  False:315  True:1458
+wrote reports\eval\ablate_benign.md
+total 1233s (holdout-only, no submission)
+
+==============================================================================
+ADVERSE-ONLY vs baseline
+==============================================================================
+overall RMSE   baseline=337.6  treatment=336.8  delta=-0.8
+  2025-01: baseline=356.1  treatment=354.9  delta=-1.2
+  2025-07: baseline=321.8  treatment=321.5  delta=-0.4
+  LIRF: baseline=660.6  treatment=658.9  delta=-1.6  n=26,528
+cluster bootstrap: paired RMSE delta=-0.78s  95% CI=[-1.47, -0.12]  P(worse)=0.008
+
+==============================================================================
+BENIGN-ONLY vs baseline
+==============================================================================
+overall RMSE   baseline=337.6  treatment=336.5  delta=-1.0
+  2025-01: baseline=356.1  treatment=354.7  delta=-1.4
+  2025-07: baseline=321.8  treatment=321.1  delta=-0.7
+  LIRF: baseline=660.6  treatment=657.3  delta=-3.3  n=26,528
+cluster bootstrap: paired RMSE delta=-1.04s  95% CI=[-2.08, -0.17]  P(worse)=0.010
+
+==============================================================================
+SUMMARY -- which subset explains the combined gain?
+==============================================================================
+Combined-weather reference (S24/S25, seed42, mixed): overall -1.21s, LIRF -4.9s.
+  adverse-only delta: -0.78s
+  benign-only  delta: -1.04s
+  -> BENIGN dominates: consistent with a seasonal/diurnal proxy, not weather-as-operations specifically.
+  (reference: combined gain was -1.21s -- if adverse+benign sum roughly to this, the two subsets are close to additive/independent; if not, there's interaction between them.)
