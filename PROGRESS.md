@@ -2029,35 +2029,77 @@ signature as before, unchanged by this rerun) but LIRF no longer routes
 through it in `mixed`, so that collateral damage no longer reaches the
 number that matters.
 
-Mechanism test under `mixed`: every regime improves now (no regime went
-net negative, unlike the `direct` run), and the concentration pattern still
-holds -- deicing_risk -33.5s, below_freezing -8.6s, low_vis -2.4s vs VFR
--0.7s, above-freezing -0.9s. Real weather signal, no longer offset by
-undertraining damage anywhere.
+**CORRECTION (S25): the mechanism test does not cleanly pass, and the
+paragraph originally written here overstated it.** Under `mixed`, every
+regime improves (no regime went net negative, unlike the `direct` run) and
+the PER-ROW concentration pattern still holds -- deicing_risk -33.5s,
+below_freezing -8.6s, low_vis -2.4s vs VFR -0.7s, above-freezing -0.9s.
+But the pre-registered mechanism claim was that the gain concentrates on
+adverse conditions, and per-row delta is the wrong lens to judge that --
+share of the AGGREGATE gain is. Since low_vis+VFR, freezing+non-freezing,
+and deicing+non-deicing are each a complete partition of all 344,339
+holdout rows, their contributions to the total -808.8 MSE-delta (-1.21s
+RMSE) sum to ~100% and can be attributed exactly, not estimated:
 
-Isolated-gain ceiling arithmetic (requested before any further build):
-converting each regime's RMSE delta into its MSE-weighted contribution to
-the N=344,339 overall number, holding everything else at baseline --
-deicing_risk alone is worth ~0.19s, below_freezing ~0.27s, low_vis (the
-broadest adverse population, 19.9% of rows) ~1.64s. None of these alone
-explain the observed -1.21s; the realized gain is smaller than low_vis's
-isolated ceiling because the two overlap and because ordinary-VFR rows also
-improve slightly (-0.7s) once LIRF isn't destabilized -- i.e. the win isn't
-purely the mechanism, part of it is "the model fits marginally better
-everywhere once it isn't fighting weather-driven variance it couldn't see
-before." Consistent with, not contradicted by, the regime table above.
+| partition | adverse side | adverse share | ordinary side | ordinary share |
+|---|---|---|---|---|
+| low_vis / VFR | low_vis (19.9% of rows) | **59.2%** | VFR (80.1%) | 40.2% |
+| freezing | below_freezing (4.0%) | 25.1% | above_freezing (96.0%) | **72.3%** |
+| de-icing | deicing_risk (0.4%) | 17.8% | no deicing_risk (99.6%) | **82.7%** |
+
+Only the broadest adverse proxy (low_vis) keeps a majority share (59.2%),
+and even there 40.2% of the realized gain -- a substantial, non-trivial
+fraction -- comes from ordinary VFR rows. By the narrower, more literally
+"de-icing" proxies, ordinary conditions supply the clear majority of the
+gain (72-83%), because even a 30x larger per-row effect can't outweigh a
+population 200x bigger. **The mechanism is real and correctly directional
+(adverse rows do benefit disproportionately per-row), but it is not what is
+mostly driving the realized number** -- part of the win is "the model fits
+marginally better across the board once LIRF isn't destabilized by the
+extra split surface," a `mixed`-specific stabilization effect, not weather
+explaining variance specifically in bad conditions. This is the same
+gradient-flattening failure mode that would have been used to REJECT the
+queue feature (S23, "no gain gradient with queue depth") if the per-row
+deltas alone were misread as a clean pass -- the honest reading here is
+"partially confirmed, majority-driven-by-share only for the broadest
+proxy," not "passes."
+
+Isolated-gain ceiling arithmetic (requested before any further build, now
+superseded by the exact partition attribution above but kept for the
+single-regime numbers): converting each regime's RMSE delta into its
+MSE-weighted contribution to the overall number, holding everything else
+at baseline -- deicing_risk alone is worth ~0.19s, below_freezing ~0.27s,
+low_vis ~1.64s.
 
 **Status: ADOPTABLE under `target="mixed"`, pending a decision** -- clears
-every bar this project uses (significant paired CI excluding zero, both
-months, no airport regression beyond noise, pre-registered mechanism test
-passes). Small (-1.21s, ~0.4%) but real, and the first EXTERNAL-data family
-(vs. internal resliced features) to survive this project's screening
-process at all -- S18-S23 killed eight candidates in a row before this.
+every bar this project uses on the primary metric (significant paired CI
+excluding zero, both months, no airport regression beyond noise). The
+mechanism test is a genuine partial pass (adverse rows benefit more per
+row, and the broadest adverse proxy keeps a bare majority share) but not
+the clean pass the pre-registration was hoping for -- log it as a real,
+mostly-`mixed`-stabilization-driven gain with a real but partial weather
+component, not a demonstration that weather explains taxi variance in bad
+conditions specifically. Small (-1.21s, ~0.4%) but real, and the first
+EXTERNAL-data family (vs. internal resliced features) to survive this
+project's screening process at all -- S18-S23 killed eight candidates in a
+row before this.
 `weather=False` is still the code default pending that decision; flipping
 it and re-running the full submission-ready `mixed` pipeline (refit on all
 2025 + predict ranking, ~45-60 min per S10) is the next step if adopted.
 `cache/features_metar_tmp/` (the temporary treatment build) is under
 `cache/`, already gitignored, not committed.
+
+**A note on what a second-seed check can and can't confirm here (flagged
+before running one, S25 item 5):** if part of the gain is `mixed`-specific
+stabilization of LIRF's reconstruction rather than weather information
+itself (per the partition attribution above), a second seed is a weaker
+check than it usually is in this project. It can confirm the -1.21s
+NUMBER reproduces (rules out a single-run fluke) -- it cannot confirm the
+MECHANISM is what the pre-registration assumed, since a stabilization
+effect and a genuine weather effect would both reproduce across seeds
+identically. Treat a matching seed-7 result as "reproducible," not as
+independent confirmation of "the de-icing/low-vis story is what's
+happening."
 
 **Candidate refinements, NOT built this session** (mostly superseded by the
 `mixed` result, kept for completeness):
@@ -2093,3 +2135,68 @@ uploaded** -- built and verified locally, upload is a separate explicit step
 something this session produced, and it predates every file this session
 touched; flagging since its provenance isn't in this log, same as the S7
 note about v8.)
+
+## 25. `target="direct"` was the wrong instrument for feature testing --
+    auditing every prior `direct`-only rejection under `mixed`
+    (2026-09-20)
+
+S24's `direct`-vs-`mixed` flip (weather: rejected at +4.86s under `direct`,
+adopted at -1.21s under `mixed`, LIRF swinging 33s between the two) raised
+an obvious question: every candidate rejection since S18 (ATFM, `ADES_mvt`,
+arrival-echo, stand-occupancy bounds, L2-vs-Huber, seed ensemble, OSM
+geometry, realised queue, hour-of-day encoding) was tested under `direct`
+because it's faster -- but `direct` is not what ships. `target="mixed"`
+(flip for LIRF, direct everywhere else, S11) is production. A `direct`-only
+result is a valid statement about `direct`; it doesn't answer the question
+actually being asked ("does this belong in the submitted model").
+
+**1. Per-airport delta comparison, direct vs mixed (no compute -- tables
+already in hand from S24).** For the weather feature specifically:
+
+| airport | direct delta | mixed delta | same? |
+|---|---|---|---|
+| EDDF | -0.9 | -0.9 | yes |
+| EDDM | -2.9 | -2.9 | yes |
+| EGLL | +0.6 | +0.6 | yes |
+| EHAM | -0.7 | -0.7 | yes |
+| LEBL | -0.4 | -0.4 | yes |
+| LEMD | -0.5 | -0.5 | yes |
+| LFPG | -2.0 | -2.0 | yes |
+| **LIRF** | **+28.3** | **-4.9** | **no -- 33.2s swing** |
+| LSZH | -2.0 | -2.0 | yes |
+| LTFM | +2.2 | +2.2 | yes |
+
+Not just "almost entirely LIRF" -- **exactly, structurally 100% LIRF, and
+this is provable rather than empirical.** `target="mixed"` fits the direct
+regressor as a fully independent, deterministic fit (same training data,
+same seed, `deterministic=true`/`force_row_wise=true` per CLAUDE.md
+conventions) -- `mixed` only swaps LIRF's *reconstruction* from direct to
+flip (`_reconstruct_taxi`, per-airport `np.where` on `ADEP_mvt`, S10). The
+other 9 airports' predictions under `mixed` ARE the direct regressor's
+predictions, byte-for-byte, whether or not `mixed` also independently fits
+a flip model alongside it. This generalizes directly: for any feature test,
+the non-LIRF per-airport deltas from an existing `direct`-only run are
+already guaranteed to reproduce under `mixed`; a rerun can only tell you
+what happens to LIRF once it routes through flip instead, and to the shared
+early-stopping curve from fitting both regressors together. Re-testing the
+other 9 airports individually would spend compute to reconfirm a
+mathematical certainty.
+
+**2. `mixed` is now the harness default.** New `tests/_harness.py`:
+`DEFAULT_TARGET = "mixed"` plus the (previously copy-pasted into every
+test file) `cluster_bootstrap` function. `tests/metar_weather_test.py`,
+`tests/queue_test.py`, `tests/ades_cat_test.py` now import both and default
+`target` to `DEFAULT_TARGET`, with a CLI override still available for a
+fast `direct` check. `metar_weather_test.py` also gained a `seed` param
+(for item 5 below) and now prints each mechanism-test regime's exact SHARE
+OF THE TOTAL REALIZED GAIN (the partition-attribution method from the §24
+correction above), not just its per-row delta, so a future run can't
+misread a flattened gradient as a clean pass again. `atfm_v1_test.py` and
+`geometry_screen.py` are deliberately NOT touched -- their rejections come
+from residual-structure ceilings (2.07s daily bound, 4.81s geometry bound)
+that are computed directly from the production `ev` frame, not from a
+fresh model fit, so they don't depend on `target` at all and re-running
+them under `mixed` would just reproduce the same bound with extra steps.
+
+Items 3-5 (queue, `ADES_mvt`, and a second weather seed, all under `mixed`)
+are running; results follow in the next entry once they land.

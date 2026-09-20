@@ -25,11 +25,13 @@ import shutil
 import sys
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from models.fit import HOLDOUT_MONTHS, run  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _harness import DEFAULT_TARGET, cluster_bootstrap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FEAT_DIR = ROOT / "cache" / "features"
@@ -52,29 +54,16 @@ def _prep(dest: Path, drop: list[str]) -> None:
     shutil.copy(FEAT_DIR / "labels2025.parquet", dest / "labels2025.parquet")
 
 
-def _boot(sb, st, n, n_resamples, seed):
-    rng = np.random.default_rng(seed)
-    k = len(sb)
-    tot = n.sum()
-    point = (st.sum() / tot) ** 0.5 - (sb.sum() / tot) ** 0.5
-    out = np.empty(n_resamples)
-    for b in range(n_resamples):
-        i = rng.integers(0, k, k)
-        nb = n[i].sum()
-        out[b] = (st[i].sum() / nb) ** 0.5 - (sb[i].sum() / nb) ** 0.5
-    lo, hi = np.percentile(out, [2.5, 97.5])
-    return point, lo, hi, float((out > 0).mean())
-
-
-def main() -> None:
-    print("=== baseline (queue features dropped) ===")
+def main(target: str = DEFAULT_TARGET) -> None:
+    suffix = f"_{target}" if target != "direct" else ""
+    print(f"=== baseline (queue features dropped), target={target} ===")
     _prep(BASE_DIR, QUEUE_COLS)
-    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name="queue_baseline",
-                     target="direct", submit=False, seed=MODEL_SEED)
+    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name=f"queue_baseline{suffix}",
+                     target=target, submit=False, seed=MODEL_SEED)
 
     print("\n=== treatment (+ realised queue family) ===")
-    _, ev_treat = run(engine="lgb", feat_dir=FEAT_DIR, name="queue_treatment",
-                      target="direct", submit=False, seed=MODEL_SEED)
+    _, ev_treat = run(engine="lgb", feat_dir=FEAT_DIR, name=f"queue_treatment{suffix}",
+                      target=target, submit=False, seed=MODEL_SEED)
 
     ev = (ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", "echo_pred",
                          pred_base="pred")
@@ -132,8 +121,8 @@ def main() -> None:
     cl = ev.group_by("ADEP_mvt", "day").agg(
         pl.col("se_base").sum().alias("sb"), pl.col("se_treat").sum().alias("st"),
         pl.len().alias("n"))
-    point, lo, hi, pw = _boot(cl["sb"].to_numpy(), cl["st"].to_numpy(),
-                              cl["n"].to_numpy(), N_RESAMPLES, BOOT_SEED)
+    point, lo, hi, pw = cluster_bootstrap(cl["sb"].to_numpy(), cl["st"].to_numpy(),
+                                         cl["n"].to_numpy(), N_RESAMPLES, BOOT_SEED)
     print(f"\ncluster bootstrap (airport, day), {N_RESAMPLES} resamples, "
           f"{cl.height} clusters:")
     print(f"  paired RMSE delta (treatment - baseline): {point:+.2f}s")
@@ -141,4 +130,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(target=sys.argv[1] if len(sys.argv) > 1 else DEFAULT_TARGET)

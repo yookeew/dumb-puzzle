@@ -27,11 +27,13 @@ import shutil
 import sys
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from models.fit import HOLDOUT_MONTHS, run  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _harness import DEFAULT_TARGET, cluster_bootstrap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FEAT_DIR = ROOT / "cache" / "features"
@@ -59,31 +61,17 @@ def _prep(dest: Path, drop: list[str]) -> None:
     shutil.copy(FEAT_DIR / "labels2025.parquet", dest / "labels2025.parquet")
 
 
-def _cluster_bootstrap(se_base_sum, se_treat_sum, n_by_cluster, n_resamples, seed):
-    rng = np.random.default_rng(seed)
-    k = len(se_base_sum)
-    n_tot = n_by_cluster.sum()
-    point = (se_treat_sum.sum() / n_tot) ** 0.5 - (se_base_sum.sum() / n_tot) ** 0.5
-    boots = np.empty(n_resamples)
-    for b in range(n_resamples):
-        idx = rng.integers(0, k, k)
-        n_b = n_by_cluster[idx].sum()
-        boots[b] = (se_treat_sum[idx].sum() / n_b) ** 0.5 - \
-            (se_base_sum[idx].sum() / n_b) ** 0.5
-    lo, hi = np.percentile(boots, [2.5, 97.5])
-    return point, lo, hi, float((boots > 0).mean())
-
-
-def main() -> None:
-    print("=== baseline (no atfm, no ADES_mvt) ===")
+def main(target: str = DEFAULT_TARGET) -> None:
+    suffix = f"_{target}" if target != "direct" else ""
+    print(f"=== baseline (no atfm, no ADES_mvt), target={target} ===")
     _prep(BASE_DIR, ATFM_COLS + ["ADES_mvt"])
-    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name="ades_cat_baseline",
-                     target="direct", submit=False, seed=MODEL_SEED)
+    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name=f"ades_cat_baseline{suffix}",
+                     target=target, submit=False, seed=MODEL_SEED)
 
     print("\n=== treatment (+ ADES_mvt categorical) ===")
     _prep(TREAT_DIR, ATFM_COLS)
-    _, ev_treat = run(engine="lgb", feat_dir=TREAT_DIR, name="ades_cat_treatment",
-                      target="direct", submit=False, seed=MODEL_SEED)
+    _, ev_treat = run(engine="lgb", feat_dir=TREAT_DIR, name=f"ades_cat_treatment{suffix}",
+                      target=target, submit=False, seed=MODEL_SEED)
 
     ev = (
         ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", pred_base="pred")
@@ -119,7 +107,7 @@ def main() -> None:
         pl.col("se_base").sum().alias("sb"),
         pl.col("se_treat").sum().alias("st"),
         pl.len().alias("n"))
-    point, lo, hi, p_worse = _cluster_bootstrap(
+    point, lo, hi, p_worse = cluster_bootstrap(
         cl["sb"].to_numpy(), cl["st"].to_numpy(), cl["n"].to_numpy(),
         N_RESAMPLES, BOOT_SEED)
     print(f"\ncluster bootstrap (airport, day), {N_RESAMPLES} resamples, "
@@ -129,4 +117,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(target=sys.argv[1] if len(sys.argv) > 1 else DEFAULT_TARGET)

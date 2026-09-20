@@ -37,12 +37,14 @@ import shutil
 import sys
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from features.weather import load_metar_hourly  # noqa: E402
 from models.fit import HOLDOUT_MONTHS, run  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _harness import DEFAULT_TARGET, cluster_bootstrap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FEAT_DIR = ROOT / "cache" / "features"
@@ -105,37 +107,20 @@ def _weather_regime(ev: pl.DataFrame) -> pl.DataFrame:
     return ev.join(wx, on="MVT_ID_mvt", how="left")
 
 
-def _cluster_bootstrap(se_base_sum: np.ndarray, se_treat_sum: np.ndarray,
-                        n_by_cluster: np.ndarray, n_resamples: int,
-                        seed: int) -> tuple[float, float, float, float]:
-    rng = np.random.default_rng(seed)
-    n_clusters = len(se_base_sum)
-    point = (se_treat_sum.sum() / n_by_cluster.sum()) ** 0.5 - \
-        (se_base_sum.sum() / n_by_cluster.sum()) ** 0.5
-    boots = np.empty(n_resamples)
-    for b in range(n_resamples):
-        idx = rng.integers(0, n_clusters, n_clusters)
-        n_b = n_by_cluster[idx].sum()
-        rmse_b_base = (se_base_sum[idx].sum() / n_b) ** 0.5
-        rmse_b_treat = (se_treat_sum[idx].sum() / n_b) ** 0.5
-        boots[b] = rmse_b_treat - rmse_b_base
-    lo, hi = np.percentile(boots, [2.5, 97.5])
-    p_worse = float((boots > 0).mean())
-    return point, lo, hi, p_worse
-
-
-def main(target: str = "direct") -> None:
-    suffix = "" if target == "direct" else f"_{target}"
-    print(f"=== building treatment feature dir (weather columns added), target={target} ===")
+def main(target: str = DEFAULT_TARGET, seed: int = MODEL_SEED) -> None:
+    suffix = f"_{target}" if target != "direct" else ""
+    suffix += f"_seed{seed}" if seed != MODEL_SEED else ""
+    print(f"=== building treatment feature dir (weather columns added), "
+          f"target={target}, seed={seed} ===")
     _make_wx_dir()
 
     print("\n=== baseline (no weather) ===")
     _, ev_base = run(engine="lgb", feat_dir=FEAT_DIR, name=f"metar_baseline{suffix}",
-                      target=target, submit=False, seed=MODEL_SEED)
+                      target=target, submit=False, seed=seed)
 
     print("\n=== treatment (weather family 7 included) ===")
     _, ev_treat = run(engine="lgb", feat_dir=WX_DIR, name=f"metar_treatment{suffix}",
-                       target=target, submit=False, seed=MODEL_SEED)
+                       target=target, submit=False, seed=seed)
 
     base = ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", pred_base="pred")
     treat = ev_treat.select("MVT_ID_mvt", pred_treat="pred")
@@ -175,7 +160,7 @@ def main(target: str = "direct") -> None:
         pl.col("se_treat").sum().alias("se_treat_sum"),
         pl.len().alias("n"),
     )
-    point, lo, hi, p_worse = _cluster_bootstrap(
+    point, lo, hi, p_worse = cluster_bootstrap(
         cl["se_base_sum"].to_numpy(), cl["se_treat_sum"].to_numpy(),
         cl["n"].to_numpy(), N_RESAMPLES, BOOT_SEED,
     )
@@ -187,10 +172,20 @@ def main(target: str = "direct") -> None:
 
     print(f"\n{'=' * 78}\nMECHANISM TEST -- pre-registered: gain must concentrate on "
           f"low-vis / freezing conditions\n{'=' * 78}")
+    print("Each row also reports its SHARE OF THE TOTAL REALIZED GAIN (not an\n"
+          "isolated hypothetical) -- for the three complementary pairs below\n"
+          "(low_vis/VFR, freezing, deicing) each pair sums to ~100% by\n"
+          "construction, since they partition all rows. A pre-registered\n"
+          "mechanism claim needs the ADVERSE side to dominate this share, not\n"
+          "just have the larger per-row delta -- a huge per-row effect on a\n"
+          "tiny population can still lose the share to a tiny per-row effect\n"
+          "on the 80-99% majority. Report both; don't call it a clean pass\n"
+          "on the per-row delta alone (PROGRESS.md S24/S25).")
     evr = _weather_regime(ev)
     evr = evr.with_columns(
         low_vis=(pl.col("flight_category") != "VFR").fill_null(False),
     )
+    total_mse_delta = rmse_treat**2 - rmse_base**2
     for label, mask_expr in [
         ("low_vis (IFR/MVFR/LIFR)", pl.col("low_vis")),
         ("VFR (ordinary)", ~pl.col("low_vis")),
@@ -204,14 +199,22 @@ def main(target: str = "direct") -> None:
             print(f"  {label:<26} n={sub.height:<8} (too small, skipped)")
             continue
         rb, rt = sub["se_base"].mean() ** 0.5, sub["se_treat"].mean() ** 0.5
-        print(f"  {label:<26} n={sub.height:<8} base={rb:7.1f}  treat={rt:7.1f}  "
-              f"delta={rt - rb:+7.1f}")
+        contrib = sub.height * (rt**2 - rb**2) / ev.height
+        share = contrib / total_mse_delta if total_mse_delta != 0 else float("nan")
+        print(f"  {label:<26} n={sub.height:<8} rows={sub.height / ev.height:6.1%}  "
+              f"base={rb:7.1f}  treat={rt:7.1f}  delta={rt - rb:+7.1f}  "
+              f"share_of_total_gain={share:6.1%}")
 
-    print("\nIf the delta for low_vis/below_freezing/deicing_risk rows isn't "
-          "substantially\nmore negative than for the ordinary-condition rows, the "
-          "mechanism test fails\nand the gain (if any) should be treated as noise, "
-          "not weather signal.")
+    print("\nA uniform-looking per-row delta (both sides negative/positive by a "
+          "similar\namount) means the gain isn't concentrated and shouldn't be "
+          "read as weather\nsignal, same logic that rejected the queue feature "
+          "(S23). But even a correctly\nconcentrated per-row delta can still "
+          "have most of its AGGREGATE share come from\nthe majority population "
+          "-- that's not a mechanism failure, just an honest\naccounting of "
+          "where the realized RMSE gain actually comes from.")
 
 
 if __name__ == "__main__":
-    main(target=sys.argv[1] if len(sys.argv) > 1 else "direct")
+    _t = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_TARGET
+    _s = int(sys.argv[2]) if len(sys.argv) > 2 else MODEL_SEED
+    main(target=_t, seed=_s)
