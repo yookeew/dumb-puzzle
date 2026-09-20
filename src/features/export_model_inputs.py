@@ -51,10 +51,14 @@ def blind(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def main() -> None:
+    # weather=True: family 7 (METAR) adopted under target="mixed", PROGRESS.md
+    # S24 -- -1.21s, 95% CI [-2.48, -0.13], P(worse)=0.013, both months, no
+    # airport regression beyond noise. Requires external-data/metar/ (fetch
+    # via src/ingest/fetch_metar_data.py). atfm/queue stay off (S20/S23).
     OUT.mkdir(parents=True, exist_ok=True)
 
     frame = pl.read_parquet(TRAIN_GLOB, columns=FRAME_COLS)
-    build_features(blind(frame), priors=None).write_parquet(OUT / "train2025.parquet")
+    build_features(blind(frame), priors=None, weather=True).write_parquet(OUT / "train2025.parquet")
 
     labels = frame.filter(pl.col("PHASE_mvt") == "DEP").select(
         "MVT_ID_mvt", "ADEP_mvt", "RUNWAY_mvt", "STAND_mvt",
@@ -71,10 +75,10 @@ def main() -> None:
     frame_ho = frame.filter(
         pl.col("MVT_TIME_UTC_mvt").dt.strftime("%Y-%m").is_in(HOLDOUT_MONTHS)
     )
-    build_features(blind(frame_ho), priors=None).write_parquet(OUT / "holdout_gap2025.parquet")
+    build_features(blind(frame_ho), priors=None, weather=True).write_parquet(OUT / "holdout_gap2025.parquet")
 
     rank = pl.read_parquet(RANKING, columns=FRAME_COLS)
-    build_features(blind(rank), priors=None).write_parquet(OUT / "ranking.parquet")
+    build_features(blind(rank), priors=None, weather=True).write_parquet(OUT / "ranking.parquet")
 
     for f in ("train2025.parquet", "labels2025.parquet", "holdout_gap2025.parquet", "ranking.parquet"):
         p = OUT / f

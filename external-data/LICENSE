@@ -1,0 +1,26 @@
+EUROCONTROL Aviation Intelligence Unit — Data Licence
+======================================================
+
+The following files in this directory are published by EUROCONTROL's
+Aviation Intelligence Unit (https://ansperformance.eu) and are reused here
+under its terms, not under this project's own code licence:
+
+- atfm_slot_adherence_2025.csv, atfm_slot_adherence_2026.csv
+- apt_dly_2025.csv.bz2, apt_dly_2026.csv.bz2
+- airport_traffic_2025.csv, airport_traffic_2026.csv
+
+Terms (per the publisher): free to copy and redistribute with attribution;
+non-commercial use only.
+
+This licence applies only to the data files listed above (and any table
+derived from them), not to this project's own source code, which is
+covered separately under the GPLv3 terms required by the challenge rules
+(see CLAUDE.md). Keeping the two licences in separate files makes clear
+that the non-commercial restriction attaches to this data, not to the code
+that reads it.
+
+Attribution: "Contains data from EUROCONTROL's Aviation Intelligence Unit"
+(https://ansperformance.eu).
+
+Use of this data for the PRC 2026 Data Challenge was confirmed permitted by
+challenge admins via Discord ruling, 2026-09-17.

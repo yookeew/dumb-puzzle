@@ -10,6 +10,15 @@ data/ranking/
 data/submissions/
 cache/
 
+# Raw EUROCONTROL downloads (rebuildable via src/ingest/fetch_atfm_data.py) —
+# LICENSE and the fetch script itself ARE committed, the CSVs are not.
+external-data/*.csv
+external-data/*.csv.bz2
+
+# Raw METAR downloads (rebuildable via src/ingest/fetch_metar_data.py) —
+# same convention, one directory down.
+external-data/metar/*.csv
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 

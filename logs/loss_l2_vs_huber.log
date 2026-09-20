@@ -1,0 +1,50 @@
+=== baseline: huber alpha=800 (incumbent) ===
+holdout fit 519s  best_iter=3310  loss=huber  target=direct
+echo clf fit 579s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 379.3 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:908  LSZH:212  LTFM:268
+  2025-01:367  2025-07:389
+  False:2286  True:253
+  False:342  True:1994
+wrote reports\eval\loss_huber_baseline.md
+total 643s (holdout-only, no submission)
+
+=== treatment: plain L2 ===
+holdout fit 172s  best_iter=1783  loss=l2  target=direct
+echo clf fit 233s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 380.1 s  (n=344,339)
+  EDDF:192  EDDM:191  EGLL:290  EHAM:202  LEBL:225  LEMD:181  LFPG:580  LIRF:912  LSZH:212  LTFM:267
+  2025-01:368  2025-07:390
+  False:2294  True:253
+  False:343  True:2000
+wrote reports\eval\loss_l2_treatment.md
+total 266s (holdout-only, no submission)
+
+overall RMSE   huber=379.3  l2=380.1  delta=+0.8
+  2025-01: huber=366.6  l2=367.6  delta=+0.9
+  2025-07: huber=389.2  l2=389.9  delta=+0.7
+
+per airport:
+  EDDF   huber=  192.5  l2=  192.1  delta=   -0.4  n=36,830
+  EDDM   huber=  189.8  l2=  191.5  delta=   +1.7  n=27,091
+  EGLL   huber=  289.0  l2=  290.2  delta=   +1.2  n=40,210
+  EHAM   huber=  200.5  l2=  201.6  delta=   +1.1  n=40,949
+  LEBL   huber=  224.4  l2=  224.6  delta=   +0.1  n=28,985
+  LEMD   huber=  180.6  l2=  180.5  delta=   -0.1  n=35,328
+  LFPG   huber=  581.1  l2=  579.8  delta=   -1.3  n=39,590
+  LIRF   huber=  908.0  l2=  912.4  delta=   +4.4  n=26,528
+  LSZH   huber=  212.0  l2=  212.4  delta=   +0.4  n=22,289
+  LTFM   huber=  267.6  l2=  267.3  delta=   -0.3  n=46,539
+
+by offset band (where the theory predicts the difference):
+  [0, 1,800)           huber=   242.9 l2=   243.1 delta=    +0.2   under-pred: huber 46% l2 46%  n=203,854
+  [1,800, 3,600)       huber=   330.0 l2=   330.3 delta=    +0.3   under-pred: huber 44% l2 43%  n=95,339
+  [3,600, 7,200)       huber=   462.1 l2=   467.0 delta=    +4.9   under-pred: huber 45% l2 44%  n=33,357
+  [7,200, 14,400)      huber=   830.1 l2=   832.3 delta=    +2.2   under-pred: huber 48% l2 48%  n=7,718
+  >= 14,400            huber=  3238.1 l2=  3236.5 delta=    -1.6   under-pred: huber 47% l2 46%  n=1,383
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (l2 - huber): +0.79s
+  95% CI: [+0.18, +1.41]    P(l2 worse) = 0.996

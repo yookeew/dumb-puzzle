@@ -1,0 +1,68 @@
+
+==============================================================================
+1. ERROR CONCENTRATION
+==============================================================================
+
+production holdout: RMSE=337.6s  n=344,339
+
+  top-k rows      % of total MSE    RMSE if solved
+  10                       34.1%            274.0s
+  50                       39.9%            261.8s
+  100                      43.7%            253.2s
+  500                      53.7%            229.7s
+  1,000                    58.5%            217.4s
+  5,000                    69.9%            185.1s
+  top 1.0% (3,443)     67.2%            193.2s
+  top 5.0% (17,216)     79.6%            152.3s
+
+==============================================================================
+2. WHAT ARE THE WORST ROWS?
+==============================================================================
+
+  top 100 rows by squared error (43.7% of MSE):
+    is_echo (|d|<30s):          9.0%   (holdout base rate 5.0%)
+    has_aobt3 missing:         87.0%   (base rate 1.5%)
+    use_prior (NM-unmatched):  22.0%   (base rate 1.4%)
+    LIRF:                      67.0%   (base rate 7.7%)
+    median true taxi:         6304s   (holdout median 923s)
+
+  top 1000 rows by squared error (58.5% of MSE):
+    is_echo (|d|<30s):         25.9%   (holdout base rate 5.0%)
+    has_aobt3 missing:         36.6%   (base rate 1.5%)
+    use_prior (NM-unmatched):  10.6%   (base rate 1.4%)
+    LIRF:                      53.9%   (base rate 7.7%)
+    median true taxi:         3482s   (holdout median 923s)
+
+==============================================================================
+3. THE ORDINARY POPULATION
+==============================================================================
+
+  lane                               n   % rows     RMSE  % of tot MSE
+  everything                   344,339   100.0%    337.6        100.0%
+  has_aobt3 only               339,016    98.5%    241.0         50.2%
+  has_aobt3 & not echo         321,876    93.5%    234.3         45.0%
+  ...& not LIRF                300,053    87.1%    221.0         37.4%
+  ...& taxi<=3600s             299,602    87.0%    206.4         32.5%
+
+==============================================================================
+4. IRREDUCIBLE NOISE FLOOR (near-identical flights)
+==============================================================================
+
+Flights matched on progressively more of what's observable. The
+within-group sd of TRUE taxi bounds what ANY model could achieve on
+rows it cannot otherwise distinguish. Compare to the model's own
+residual sd on the same rows.
+
+  (computed on the ordinary lane: n=299,602, model RMSE=206.4s)
+
+  matched on                   groups      rows   within sd  model resid sd
+  airport + day                   558   299,602       348.9           204.2
+  + hour                       10,779   298,776       315.0           195.2
+  + runway                     17,329   296,133       300.6           191.9
+  + stand group                32,306   246,297       284.4           187.8
+  + aircraft type              23,205    99,911       276.4           185.5
+
+  If 'model resid sd' has already fallen to ~'within sd' at the
+  finest matching, the model is extracting essentially everything
+  these covariates contain and new features must bring genuinely
+  orthogonal information to beat it.

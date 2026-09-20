@@ -1,0 +1,15 @@
+fit 395s  best_iter=3310  (target=direct, huber)
+
+==============================================================================
+GENERALIZATION GAP (raw model output, same label window)
+==============================================================================
+
+  train rows      (fitted, n=1,556,614)      RMSE =   166.4s
+  inner-valid     (early stop, n=182,942)   RMSE =   230.7s
+  holdout Jan+Jul (unseen, n=344,078)     RMSE =   246.4s
+
+  train -> holdout gap: +80.0s  (+48.1%)
+  valid -> holdout gap: +15.7s  (+6.8%)
+
+  A large train->holdout gap = overfitting (capacity problem).
+  A small gap = the model is at an information limit.

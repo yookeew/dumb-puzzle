@@ -1,0 +1,66 @@
+=== building treatment feature dir (weather columns added) ===
+  train2025.parquet:
+    vis_mi null rate after join: 0.0133%  (n=2,085,047)
+  holdout_gap2025.parquet:
+    vis_mi null rate after join: 0.0078%  (n=344,419)
+  ranking.parquet:
+    vis_mi null rate after join: 0.0000%  (n=344,841)
+
+=== baseline (no weather) ===
+holdout fit 412s  best_iter=3310  loss=huber  target=direct
+echo clf fit 562s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 379.3 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:908  LSZH:212  LTFM:268
+  2025-01:367  2025-07:389
+  False:2286  True:253
+  False:342  True:1994
+wrote reports\eval\metar_baseline.md
+total 857s (holdout-only, no submission)
+
+=== treatment (weather family 7 included) ===
+holdout fit 405s  best_iter=2669  loss=huber  target=direct
+echo clf fit 513s  best_iter=363  base_rate=0.055
+echo clf holdout  precision=0.695  recall=0.097  n_true_echo=17349  n_pred_echo=2413
+OVERALL RMSE 384.1 s  (n=344,339)
+  EDDF:192  EDDM:187  EGLL:290  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:936  LSZH:210  LTFM:270
+  2025-01:362  2025-07:401
+  False:2319  True:256
+  False:346  True:2012
+wrote reports\eval\metar_treatment.md
+total 566s (holdout-only, no submission)
+
+overall RMSE   baseline=379.3  treatment=384.1  delta=+4.9
+  2025-01: baseline=366.6  treatment=362.4  delta=-4.3
+  2025-07: baseline=389.2  treatment=400.8  delta=+11.7
+
+per airport (treatment - baseline RMSE):
+  EDDF   base=  192.5  treat=  191.6  delta=   -0.9  n=36,830
+  EDDM   base=  189.8  treat=  186.9  delta=   -2.9  n=27,091
+  EGLL   base=  289.0  treat=  289.6  delta=   +0.6  n=40,210
+  EHAM   base=  200.5  treat=  199.8  delta=   -0.7  n=40,949
+  LEBL   base=  224.4  treat=  224.0  delta=   -0.4  n=28,985
+  LEMD   base=  180.6  treat=  180.1  delta=   -0.5  n=35,328
+  LFPG   base=  581.1  treat=  579.1  delta=   -2.0  n=39,590
+  LIRF   base=  908.0  treat=  936.3  delta=  +28.3  n=26,528
+  LSZH   base=  212.0  treat=  210.0  delta=   -2.0  n=22,289
+  LTFM   base=  267.6  treat=  269.8  delta=   +2.2  n=46,539
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (treatment - baseline): +4.86s
+  95% CI: [-1.70, +12.01]
+  P(worse) = 0.917
+
+==============================================================================
+MECHANISM TEST -- pre-registered: gain must concentrate on low-vis / freezing conditions
+==============================================================================
+  low_vis (IFR/MVFR/LIFR)    n=68510    base=  499.1  treat=  492.8  delta=   -6.3
+  VFR (ordinary)             n=275829   base=  343.1  treat=  352.0  delta=   +8.9
+  below_freezing             n=13660    base=  302.3  treat=  293.7  delta=   -8.6
+  above freezing             n=330679   base=  382.1  treat=  387.4  delta=   +5.3
+  deicing_risk               n=1321     base=  577.8  treat=  544.3  delta=  -33.5
+  no deicing_risk            n=343018   base=  378.3  treat=  383.4  delta=   +5.1
+
+If the delta for low_vis/below_freezing/deicing_risk rows isn't substantially
+more negative than for the ordinary-condition rows, the mechanism test fails
+and the gain (if any) should be treated as noise, not weather signal.
