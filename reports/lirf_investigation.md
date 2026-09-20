@@ -297,4 +297,96 @@ like irreducible variance from a handful of extreme-magnitude departures,
 and effort may be better spent on LFPG or cross-airport features unless a
 new data source (e.g. ATFM regulation records) becomes available.
 
+## 5. The "irreducible variance" call in §4 was wrong — a real, targeted
+   fix was found and shipped (2026-09-17)
+
+A second review pushed back on §4's "irreducible" framing: `taxi ≡ offset
+- d` exactly, so the error of any offset-anchored reconstruction is just
+the error of `d̂`, and the question was never "is this predictable" but
+"does the *existing* model already predict it and get thrown away
+downstream." It did. Full mechanism, validation (byte-identical on the
+other 9 airports, paired-bootstrap P(worse)=0.0000, both months improve),
+and the shipped fix are documented in **PROGRESS.md §12**, not duplicated
+here — short version: `CEIL=10800` was clipping the `flip` target's raw
+`offset - d̂` reconstruction before blending, which only matters for
+`flip` (not `direct`, whose raw output never gets near 10800 — trained
+labels are capped at 7200 so it never learns to). Relaxing that cap
+**only** for `ADEP_mvt=="LIRF"` (every other airport genuinely needs the
+tight cap — checked directly, their rare over-cap rows are 8-84x worse
+raw vs. capped) took LIRF from 857s to **660.6s** on the same holdout.
+Shipped as `smart-jigsaw_v12` (337.6s overall, -8.8% vs v11).
+
+**§4's "irreducible" and "~5% ceiling from bias" framing should be read as
+correct only for the *then-current* model** — bias was genuinely small at
+the time it was measured, but that was measuring bias in a model that was
+still silently discarding correct large predictions. Once that discard
+was removed, there was far more real signal available than the bias
+decomposition suggested. Lesson for next time: an error-budget analysis
+answers "how much can recalibrating *this* model help," not "how much
+could a *different* correct model help" — don't conflate the two again.
+
+## 6. Two follow-up ideas tested and rejected (2026-09-17, same session as §5)
+
+Both are pure post-processing changes on already-cached model outputs
+(`lirf_next_tests.py`) — no retraining needed, results in seconds.
+
+**AOBT_3-availability blend — rejected, the §5 fix already solved it via a
+better mechanism.** Before the CEIL fix, `RMSE(aobt3_taxi, taxi)=1372` beat
+the model's own `1827` on the `offset>7200 & aobt3_taxi present` subset
+(n=744, non-circular), suggesting a ~5% further lever. But after the CEIL
+fix, the model's own RMSE on that *exact* subset dropped to **770.4** —
+better than `aobt3_taxi`'s static 1372. The CEIL fix's `d̂`-based
+reconstruction already captures this population's signal better than the
+cruder AOBT_3 proxy did. Tested anyway to confirm: blending toward
+`aobt3_taxi` (narrow gate matching the original evidence, or a broader
+"any LIRF row with aobt3 present" gate) makes LIRF **worse**, not better —
+661→678 (narrow) or 661→754 (broad). Not adopted. General lesson: an
+unbuilt lever's estimated ceiling can evaporate once a different fix lands
+first — re-check before building, not just before shipping.
+
+**Bound `d̂` directly instead of bounding reconstructed taxi (the
+airport-agnostic generalization flagged in §3-4) — rejected, reproduces
+the §6/PROGRESS.md blanket-CEIL-raise regression.** Clipped `d̂` to
+`[-3600, 10800]` (reusing `encode.py`'s existing `D_CLIP`) before
+reconstructing, then applied one **uniform** wide ceiling (140000,
+no airport name) to everyone. Catastrophic: overall holdout RMSE
+376.0→**1155.4**, every non-LIRF airport blew up (EDDF 231→**2630**, an
+11x regression), and LIRF itself barely moved (855, not the fix's 660.6).
+Mechanism: bounding `d̂` doesn't stop `offset` itself from pushing the
+*reconstructed* value up for ordinary rows at every airport — the tight
+final `CEIL=10800` was doing real work as a general noise backstop for
+routine prediction error at every airport, not just catching the rare
+wild-`d̂` cases. Loosening the *output* ceiling broadly, even with `d̂`
+pre-clipped, lets that routine noise back in. Confirms: there is no
+airport-agnostic free lunch here: the airport-gated design in §5 is
+necessary, not just simpler-to-implement. Not adopted.
+
+**Quantile (median) objective for `d`, `flip` target — rejected, no
+meaningful effect where it should matter most.** Hypothesis: LIRF's tail
+is so heavy (taxi sd ~1332s vs 300-450s elsewhere) that a conditional-
+median estimator (LightGBM `objective="quantile"`, `alpha=0.5`) should be
+structurally more robust to it than even Huber, which is still
+fundamentally a mean-estimator. Tested: one retrain, `target="flip"`,
+holdout-only, same train/valid split as every other experiment
+(`lirf_quantile_test.py`; `LOSS_OBJECTIVE`/`alpha` plumbing added to
+`fit.py` for the test, then reverted since not adopted). Compared against
+a fair same-target baseline (`flip` + Huber + the already-shipped CEIL
+fix, all 10 airports — not the production `mixed` number, since `mixed`
+uses `direct` for 9 of the 10 airports and target has to match to isolate
+the loss function's effect):
+
+| | flip+Huber+CEILfix | flip+quantile-median+CEILfix |
+|---|---|---|
+| overall | 344.0 | 345.6 (slightly worse) |
+| **LIRF** | **661** | **657.8** (-0.5%, noise-level) |
+| other 9 airports | — | worse on 7, ~unchanged on 2, none dramatically |
+
+LIRF — the airport this was specifically supposed to help most — barely
+moved, and every other airport got marginally worse. Matches two earlier
+findings rather than contradicting them: (a) this doc's own L2-vs-Huber
+test (§4) found LIRF's tail compression nearly identical under either
+loss, and (b) PROGRESS.md §5's note that other contestants found
+loss/hyperparameter tuning was not significant once tested properly. Not
+adopted; `fit.py` reverted to the pre-test state.
+
 Simplified summary: LIRF (Rome) was by far our worst airport — 857 seconds of error, 3–4x every other airport. We found that for a tiny sliver of LIRF flights (22 out of 26,528, the ones with genuinely huge multi-hour delays), the model's raw prediction was being silently chopped down by a safety cap that exists to stop other airports' models from going haywire. For every other airport, that cap is doing its job correctly and must stay — but for LIRF specifically, those big raw predictions are usually right, not noise. So we relaxed the cap for LIRF only, leaving all 9 other airports mathematically untouched (verified: zero difference, not just similar). Result: LIRF error dropped 857s → 661s, and the overall model improved 370s → 338s — the single biggest jump of this whole investigation, from a 2-line, narrowly-targeted, thoroughly-validated change.

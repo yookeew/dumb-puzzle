@@ -1,0 +1,37 @@
+
+==============================================================================
+ORACLE BOUNDS AT GEOMETRY-RELEVANT GRANULARITY
+==============================================================================
+
+production residual MSE = 113,949 (RMSE 337.6s), n=344,339
+
+Routed distance is a deterministic function of (airport, stand,
+runway), so that cell structure bounds what it could ever add.
+
+  granularity                                    cells       raw   corrected
+  airport                                           10      0.09        0.09
+  airport + runway                                  59      0.31        0.28
+  airport + stand                                2,432      2.88        1.68
+  airport + stand + runway  <- routed distance   9,123      9.38        4.81
+
+==============================================================================
+WHERE GEOMETRY SHOULD ACTUALLY PAY: THIN-SUPPORT CELLS
+==============================================================================
+
+A categorical memorises well-sampled (stand, runway) pairs. Routed
+distance helps most where training support is thin -- there the
+category code carries little and a metric generalises.
+
+  training support          rows   % rows     RMSE   % of MSE
+  0 (unseen)                 466    0.14%    372.9      0.17%
+  1-9                      2,381    0.69%    374.6      0.85%
+  10-49                   14,536    4.22%    774.1     22.20%
+  50-199                  52,340   15.20%    282.4     10.64%
+  >=200                  274,616   79.75%    307.4     66.14%
+
+  thin-support subset (<50): n=17,383, RMSE=723.9s, 23.22% of MSE
+
+  granularity                                    cells       raw   corrected
+  stand+runway within thin support               4,005     64.37        0.00
+
+  => perfectly solving that subset is worth 0.00s on the FULL holdout

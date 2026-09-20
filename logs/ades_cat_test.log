@@ -1,0 +1,43 @@
+=== baseline (no atfm, no ADES_mvt) ===
+holdout fit 364s  best_iter=3310  loss=huber  target=direct
+echo clf fit 425s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 379.3 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:908  LSZH:212  LTFM:268
+  2025-01:367  2025-07:389
+  False:2286  True:253
+  False:342  True:1994
+wrote reports\eval\ades_cat_baseline.md
+total 491s (holdout-only, no submission)
+
+=== treatment (+ ADES_mvt categorical) ===
+holdout fit 222s  best_iter=2165  loss=huber  target=direct
+echo clf fit 282s  best_iter=340  base_rate=0.055
+echo clf holdout  precision=0.709  recall=0.100  n_true_echo=17349  n_pred_echo=2444
+OVERALL RMSE 394.3 s  (n=344,339)
+  EDDF:193  EDDM:191  EGLL:290  EHAM:201  LEBL:225  LEMD:181  LFPG:582  LIRF:986  LSZH:213  LTFM:267
+  2025-01:380  2025-07:406
+  False:2439  True:254
+  False:378  True:1398
+wrote reports\eval\ades_cat_treatment.md
+total 328s (holdout-only, no submission)
+
+overall RMSE   baseline=379.3  treatment=394.3  delta=+15.0
+  2025-01: baseline=366.6  treatment=379.8  delta=+13.2
+  2025-07: baseline=389.2  treatment=405.6  delta=+16.5
+
+per airport:
+  EDDF   base=  192.5  treat=  192.9  delta=   +0.4  n=36,830
+  EDDM   base=  189.8  treat=  191.1  delta=   +1.3  n=27,091
+  EGLL   base=  289.0  treat=  290.2  delta=   +1.3  n=40,210
+  EHAM   base=  200.5  treat=  201.0  delta=   +0.5  n=40,949
+  LEBL   base=  224.4  treat=  224.6  delta=   +0.1  n=28,985
+  LEMD   base=  180.6  treat=  181.4  delta=   +0.7  n=35,328
+  LFPG   base=  581.1  treat=  581.5  delta=   +0.4  n=39,590
+  LIRF   base=  908.0  treat=  986.1  delta=  +78.1  n=26,528
+  LSZH   base=  212.0  treat=  212.6  delta=   +0.6  n=22,289
+  LTFM   base=  267.6  treat=  267.1  delta=   -0.5  n=46,539
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (treatment - baseline): +15.04s
+  95% CI: [+0.74, +31.55]    P(worse) = 0.979

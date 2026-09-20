@@ -18,7 +18,14 @@ CAT_COLS = [
     "WK_TBL_CAT_flt", "MARKET_SEGMENT_flt", "FLIGHT_RULE_mvt",
     "AIRCRAFT_OPERATOR_flt", "inbound_actype", "link_confidence",
     "dep_rwy_config", "arr_rwy_config",
+    "flight_category",  # family 7 (weather), 4 levels (VFR/MVFR/IFR/LIFR) --
+                        # low cardinality, unlike ADES_mvt's 1,569 (S21)
 ]
+# ADES_mvt was tried here as a plain categorical (PROGRESS.md S21) and
+# REJECTED: +15.0s overall, 95% CI [+0.74, +31.55], almost all of it LIRF
+# (908 -> 986s). 1,569 levels collapse best_iter 3310 -> 2165 -- the model
+# early-stops on memorised destination splits before it finishes training.
+# Do not re-add without a low-cardinality encoding AND a fresh test.
 
 # columns that must never enter the model matrix: ids, raw datetimes, and
 # anything derived from the DEP off-block time (d, taxi) or split bookkeeping (ym)

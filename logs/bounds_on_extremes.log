@@ -1,0 +1,48 @@
+
+==============================================================================
+1. BOUND COVERAGE AND WIDTH, BY OFFSET BAND
+==============================================================================
+
+  L_sec is a LOWER bound on taxi implied by the next arrival at
+  the same stand. What matters is not its width in absolute terms
+  but how much it constrains RELATIVE to the offset in play.
+
+  offset band                n     L>0     med L  med L/offset   % MSE
+  [0, 1,800)           203,854    6.2%       298         0.25    30.7%
+  [1,800, 3,600)        95,339    9.5%       357         0.14    26.5%
+  [3,600, 7,200)        33,357    8.3%       341         0.07    18.5%
+  [7,200, 14,400)        7,718    6.6%       355         0.04    13.7%
+  >= 14,400              1,383    6.7%       321         0.02    10.1%
+
+==============================================================================
+2. DOES L_sec SEPARATE THE TWO ARMS? (offset >= 7200s)
+==============================================================================
+
+  pushed-late arm : n=8,898
+  sat-at-stand arm: n=123
+
+  metric                         pushed-late   sat-at-stand
+  median L_sec                         0.000          0.000
+  mean echo_prob                       0.005          0.559
+  median actual_ground             7,858.000      7,685.000
+  median inbound_arr_delay         3,902.000      2,642.000
+  has_next                             98.7%          97.6%
+  L_sec > 0                             6.7%           4.1%
+  L_sec > 0.5*offset                    0.0%           0.0%
+  L_sec > 0.8*offset                    0.0%           0.0%
+
+  A large gap on the L_sec rows = stand occupancy is telling us
+  which arm the flight is in, and the classifier isn't using it.
+
+==============================================================================
+3. WHAT WOULD USING THE BOUND BE WORTH?
+==============================================================================
+
+  clip pred up to L_sec  (link_confidence in ['high']):
+    rows moved: 23   RMSE 337.6 -> 337.6  (+0.0s)
+
+  clip pred up to L_sec  (link_confidence in ['high', 'med']):
+    rows moved: 28   RMSE 337.6 -> 337.6  (+0.0s)
+
+  sanity: true taxi < L_sec on 85/23,925 high-confidence rows (0.36%)
+  (a low violation rate means L_sec is a trustworthy hard floor)

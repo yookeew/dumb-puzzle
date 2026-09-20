@@ -1,0 +1,72 @@
+
+==============================================================================
+1. DIRECTION AND SHAPE OF THE WORST ROWS
+==============================================================================
+
+  top 100: model UNDER-predicts 53% of them
+    median true taxi     6,304s   median pred     6,332s
+    median offset       10,078s   median true d     2,461s
+    median d_hat         4,617s
+
+  top 1000: model UNDER-predicts 75% of them
+    median true taxi     3,482s   median pred     1,973s
+    median offset        5,640s   median true d     1,168s
+    median d_hat         2,808s
+
+==============================================================================
+2. IS d PREDICTABLE GIVEN offset?
+==============================================================================
+
+  taxi = offset - d, and offset is always observable. So for each
+  offset band: how spread out is d, and how much of that spread is
+  the model already capturing?
+
+  offset band                n     sd(d)  sd(resid)  sd(taxi)   % MSE
+  [0, 1,800)           203,854       443        243       356   30.7%
+  [1,800, 3,600)        95,339       684        330       512   26.5%
+  [3,600, 7,200)        33,357     1,193        467       740   18.5%
+  [7,200, 14,400)        7,718     2,166        834     1,111   13.7%
+  >= 14,400              1,383    16,208      1,683     7,292   10.1%
+
+  sd(resid) << sd(d) means the model IS explaining d in that band.
+  sd(resid) ~= sd(d) means it is predicting ~a constant and the
+  spread is unexplained.
+
+==============================================================================
+3. IS THE LARGE-OFFSET POPULATION BIMODAL?
+==============================================================================
+
+  For large offsets a flight either pushed back near schedule and
+  then sat (d ~ 0, taxi ~ offset) or pushed back very late (d ~
+  offset, taxi ~ normal). If those are indistinguishable from
+  observables, the conditional mean is already RMSE-optimal.
+
+  offset >= 7200s: n=9,101 (23.8% of total MSE)
+
+  taxi/offset ratio            n  % of band  median taxi   median d
+  ~0  (pushed late)        4,170      45.8%          788     10,679
+  0.1-0.5                  4,728      52.0%        1,270      7,197
+  0.5-0.9                     80       0.9%        5,789      2,702
+  ~1  (sat at stand)         116       1.3%        9,931          1
+
+  A U-shape (mass at both ends) = mixture. The question is whether
+  anything observable separates the two arms.
+
+  existing echo_prob on each arm:
+    pushed-late arm  (ratio<0.5):  mean echo_prob=0.005  n=8,898
+    sat-at-stand arm (ratio>=0.9): mean echo_prob=0.559  n=123
+    (well separated => the classifier already distinguishes them;
+     similar => this is the unexploited signal)
+
+==============================================================================
+4. HOW EXPOSED IS THE ACTUAL RANKING SET?
+==============================================================================
+
+  offset band            ranking n   ranking %   holdout %
+  [0, 1,800)               205,998      59.74%      59.20%
+  [1,800, 3,600)            93,259      27.04%      27.69%
+  [3,600, 7,200)            33,082       9.59%       9.69%
+  [7,200, 14,400)            8,319       2.41%       2.24%
+  >= 14,400                  1,861       0.54%       0.40%
+
+  If ranking exposure ~= holdout exposure, holdout gains transfer.

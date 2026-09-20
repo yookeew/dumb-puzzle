@@ -1,0 +1,70 @@
+
+
+  tr = _prep(pl.read_parquet(TRAIN_GLOB, columns=COLS))
+
+==============================================================================
+A. Does the ARRIVAL-side echo phenomenon exist?
+==============================================================================
+
+  DEP: echo rate =  5.41%   n=2,085,047
+    by airport: LIRF=18.1%  LEBL=5.6%  LTFM=5.1%  EDDM=5.0%  EGLL=4.9%  LEMD=4.5%  LFPG=4.1%  EDDF=3.4%  EHAM=3.4%  LSZH=2.9%
+
+  ARR: echo rate =  3.00%   n=2,082,749
+    by airport: LIRF=10.1%  EDDM=3.1%  EDDF=2.7%  LSZH=2.7%  EHAM=2.5%  LFPG=2.5%  EGLL=2.3%  LEBL=2.2%  LEMD=2.1%  LTFM=1.9%
+
+==============================================================================
+B. Does ARRIVAL echo rate predict DEPARTURE echo rate?
+==============================================================================
+  per (airport, day): arrivals are visible in ranking.parquet,
+  departures are what we need to predict.
+
+  overall correlation: r = 0.860   (3,649 airport-days)
+
+  per airport:
+    EDDF   r=+0.258  dep_echo=  3.5%  arr_echo=  2.7%  days=365
+    EDDM   r=+0.331  dep_echo=  5.0%  arr_echo=  3.1%  days=365
+    EGLL   r=+0.188  dep_echo=  4.9%  arr_echo=  2.2%  days=364
+    EHAM   r=+0.205  dep_echo=  3.4%  arr_echo=  2.5%  days=365
+    LEBL   r=-0.010  dep_echo=  5.6%  arr_echo=  2.2%  days=365
+    LEMD   r=-0.000  dep_echo=  4.5%  arr_echo=  2.1%  days=365
+    LFPG   r=+0.139  dep_echo=  4.2%  arr_echo=  2.5%  days=365
+    LIRF   r=+0.447  dep_echo= 18.3%  arr_echo= 10.1%  days=365
+    LSZH   r=+0.149  dep_echo=  2.9%  arr_echo=  2.7%  days=365
+    LTFM   r=+0.073  dep_echo=  5.2%  arr_echo=  1.9%  days=365
+
+  departure echo rate by ARRIVAL-echo decile (the usable form):
+    arr_echo d0 [0.000,0.015] -> dep_echo=  4.1%  (365 airport-days)
+    arr_echo d1 [0.015,0.018] -> dep_echo=  4.4%  (365 airport-days)
+    arr_echo d2 [0.018,0.021] -> dep_echo=  4.6%  (365 airport-days)
+    arr_echo d3 [0.021,0.023] -> dep_echo=  4.3%  (365 airport-days)
+    arr_echo d4 [0.023,0.025] -> dep_echo=  4.5%  (365 airport-days)
+    arr_echo d5 [0.025,0.027] -> dep_echo=  4.2%  (365 airport-days)
+    arr_echo d6 [0.027,0.030] -> dep_echo=  4.3%  (365 airport-days)
+    arr_echo d7 [0.030,0.035] -> dep_echo=  4.3%  (365 airport-days)
+    arr_echo d8 [0.035,0.055] -> dep_echo=  4.6%  (365 airport-days)
+    arr_echo d9 [0.056,0.191] -> dep_echo= 18.2%  (364 airport-days)
+
+==============================================================================
+C. Is the signal present in the 2026 RANKING set?
+==============================================================================
+
+  ranking ARR rows with block time: 344,693 (100.0% of arrivals)
+  ranking ARR echo rate: 2.83%
+  ranking DEP rows (block time blanked, as expected): 344,841, block non-null = 0
+
+  usable (airport, day) arrival-echo cells in ranking: 620
+  arr_echo spread: min=0.000 p50=0.023 max=0.154
+  (non-degenerate spread => the feature varies and is usable live)
+
+==============================================================================
+D. What is PERFECT echo routing worth on our holdout?
+==============================================================================
+
+  production                                337.6s
+  + perfect is_echo -> predict offset        325.1s   (gain 12.5s)
+  + perfect best-of-two routing              296.7s   (gain 40.8s)
+
+  board calibration: our 337.6 local -> 302 actual (x0.895)
+  implied board score at perfect echo routing: 291s
+  implied board score at best-of-two routing:  265s
+  leaderboard front is ~245s.

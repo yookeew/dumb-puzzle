@@ -1,0 +1,56 @@
+=== baseline (queue features dropped) ===
+holdout fit 307s  best_iter=3310  loss=huber  target=direct
+echo clf fit 441s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 379.3 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:908  LSZH:212  LTFM:268
+  2025-01:367  2025-07:389
+  False:2286  True:253
+  False:342  True:1994
+wrote reports\eval\queue_baseline.md
+total 511s (holdout-only, no submission)
+
+=== treatment (+ realised queue family) ===
+holdout fit 309s  best_iter=3539  loss=huber  target=direct
+echo clf fit 374s  best_iter=439  base_rate=0.055
+echo clf holdout  precision=0.691  recall=0.096  n_true_echo=17349  n_pred_echo=2419
+OVERALL RMSE 381.1 s  (n=344,339)
+  EDDF:192  EDDM:190  EGLL:287  EHAM:200  LEBL:224  LEMD:181  LFPG:580  LIRF:920  LSZH:211  LTFM:267
+  2025-01:364  2025-07:394
+  False:2302  True:254
+  False:345  True:1970
+wrote reports\eval\queue_treatment.md
+total 444s (holdout-only, no submission)
+
+overall RMSE   baseline=379.3  treatment=381.1  delta=+1.8
+  2025-01: baseline=366.6  treatment=363.8  delta=-2.9
+  2025-07: baseline=389.2  treatment=394.5  delta=+5.3
+
+per airport:
+  EDDF   base=  192.5  treat=  192.4  delta=   -0.2  n=36,830
+  EDDM   base=  189.8  treat=  189.7  delta=   -0.1  n=27,091
+  EGLL   base=  289.0  treat=  286.8  delta=   -2.2  n=40,210
+  EHAM   base=  200.5  treat=  200.3  delta=   -0.2  n=40,949
+  LEBL   base=  224.4  treat=  224.4  delta=   -0.0  n=28,985
+  LEMD   base=  180.6  treat=  180.6  delta=   +0.0  n=35,328
+  LFPG   base=  581.1  treat=  580.1  delta=   -1.0  n=39,590
+  LIRF   base=  908.0  treat=  920.1  delta=  +12.1  n=26,528
+  LSZH   base=  212.0  treat=  211.4  delta=   -0.6  n=22,289
+  LTFM   base=  267.6  treat=  267.4  delta=   -0.2  n=46,539
+
+by offset band (S22 says 57% of MSE is in the first two):
+  [0, 1,800)           base=   242.9 treat=   242.7 delta=    -0.2  n=203,854
+  [1,800, 3,600)       base=   330.0 treat=   329.1 delta=    -0.9  n=95,339
+  [3,600, 7,200)       base=   462.1 treat=   461.7 delta=    -0.4  n=33,357
+  [7,200, 14,400)      base=   830.1 treat=   824.4 delta=    -5.6  n=7,718
+  >= 14,400            base=  3238.1 treat=  3308.3 delta=   +70.2  n=1,383
+
+by queue depth (does it help most where the queue is long?):
+  q_ahead [ 0,  5) base=   229.7 treat=   229.3 delta=    -0.4  n=61,762
+  q_ahead [ 5, 10) base=   275.4 treat=   278.0 delta=    +2.6  n=121,700
+  q_ahead [10, 15) base=   229.8 treat=   228.9 delta=    -0.9  n=92,618
+  q_ahead [15,100) base=   262.4 treat=   261.0 delta=    -1.4  n=62,936
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (treatment - baseline): +1.81s
+  95% CI: [-3.61, +8.64]    P(worse) = 0.642

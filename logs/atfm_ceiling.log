@@ -1,0 +1,60 @@
+
+==============================================================================
+A. What each feature's decile-level bias is WORTH in RMSE
+==============================================================================
+
+production holdout RMSE = 337.56s   (n=344,339)
+
+in-sample = fit decile means on ALL holdout rows (optimistic, an
+upper bound). transfer = fit on Jan, apply to Jul and vice versa
+(honest -- this is what a real feature would have to achieve).
+
+  feature                            in-sample    transfer   (RMSE gain, s)
+  dep_atfm_reg_share                     0.068      -0.747   n=344,339
+  dep_atfm_in_slot_share                 0.178      -0.155   n=344,339
+  dep_atfm_late_share                    0.312      -0.051   n=344,339
+  dep_atfm_dly_min_per_flight            0.178      -0.048   n=344,339
+  dep_atfm_dly_weather_share             0.065      -0.019   n=184,126
+  dep_atfm_dly_staffing_share            0.045      -0.028   n=184,126
+  dep_atfm_traffic_dep                   0.130      -0.368   n=344,339
+  dep_atfm_traffic_arr                   0.125      -0.373   n=344,339
+  dep_atfm_traffic_tot                   0.131      -0.380   n=344,339
+  des_atfm_reg_share                     0.036      -0.017   n=231,914
+  des_atfm_in_slot_share                 0.038       0.018   n=228,007
+  des_atfm_late_share                    0.045       0.016   n=228,007
+  des_atfm_dly_min_per_flight            0.065       0.002   n=231,926
+  des_atfm_dly_weather_share             0.053       0.025   n=74,134
+  des_atfm_dly_staffing_share            0.079      -0.001   n=74,134
+  des_atfm_traffic_dep                   0.042       0.015   n=241,279
+  des_atfm_traffic_arr                   0.042       0.014   n=241,279
+  des_atfm_traffic_tot                   0.042       0.013   n=241,279
+
+  best single feature: in-sample 0.312s, transfer 0.025s
+  (measured -0.4s from the actual retrain sits inside this range)
+
+==============================================================================
+B. Honest oracle ceiling by feature granularity
+==============================================================================
+
+production residual MSE = 113,949  (RMSE 337.6s)
+An oracle knowing the TRUE mean residual of each cell is the best any
+feature at that granularity could ever do. Noise correction matters:
+small cells fit noise for free.
+
+  (airport, day) -- bounds ALL ADEP-side features
+    cells=620  between=1,600 (1.4%)  noise-expected=205
+    naive oracle RMSE gain=2.38s   noise-corrected=2.07s
+
+  [ADES-side rows only: n=231,914]
+
+  (airport, day), ADES-covered rows
+    cells=620  between=1,759 (1.4%)  noise-expected=325
+    naive oracle RMSE gain=2.53s   noise-corrected=2.06s
+
+  (airport, day, ADES reg_share) -- bounds the FULL dual join
+    cells=55,342  between=34,717 (28.5%)  noise-expected=29,081
+    naive oracle RMSE gain=53.88s   noise-corrected=8.17s
+
+  (airport, day, hour) -- what HOURLY data could reach
+    cells=12,726  between=11,396 (10.0%)  noise-expected=4,211
+    naive oracle RMSE gain=17.33s   noise-corrected=10.82s

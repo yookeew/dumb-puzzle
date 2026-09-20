@@ -1,0 +1,35 @@
+
+
+departures with AOBT_3: 163,367   joined: 163,367
+
+==============================================================================
+1. BRUTE-FORCE AGREEMENT (the causality test)
+==============================================================================
+
+  checked 400 rows x 4 features: ALL MATCH
+
+==============================================================================
+2. SELF-EXCLUSION AND ANCHOR SANITY
+==============================================================================
+  rows with q_ahead == 0: 2,069 (1.3%)  -- nonzero share expected
+  negative q_ahead_mean_wait: 0 (MUST be 0 -- negative means someone 'ahead' pushed back later)
+  q_ahead_rwy <= q_ahead violations: 0 (must be 0)
+
+==============================================================================
+3. NO DEPENDENCE ON OWN TAKEOFF TIME T
+==============================================================================
+  Recomputing with every T shifted +1h: the queue-ahead count is
+  defined at pushback, so counts for OTHER aircraft may change but
+  a flight's own T must not enter its own anchor.
+  q_push_15m unchanged under a uniform T shift: 163,041/164,450 (99.14%)
+  (this one depends only on pushback times, so it must be 100%)
+
+==============================================================================
+4. 2025 vs 2026 DISTRIBUTION PARITY
+==============================================================================
+
+  feature                  2025-03 mean    2026 mean    2025 sd    2026 sd   null%2026
+  q_ahead                          9.66         9.82       5.56       5.60        1.5%
+  q_ahead_rwy                      6.50         6.49       4.63       4.36        1.5%
+  q_push_15m                       8.68         8.62       4.23       4.17        1.5%
+  q_ahead_mean_wait              549.52       586.18     183.60     423.02        2.6%

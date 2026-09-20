@@ -1,0 +1,11 @@
+holdout fit 366s  best_iter=2902  loss=huber  target=direct
+echo clf fit 447s  best_iter=404  base_rate=0.055
+echo clf holdout  precision=0.690  recall=0.096  n_true_echo=17349  n_pred_echo=2417
+OVERALL RMSE 386.1 s  (n=344,339)
+  EDDF:192  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:945  LSZH:212  LTFM:267
+  2025-01:364  2025-07:403
+  False:2300  True:261
+  False:350  True:1982
+wrote reports\eval\echoclf_hour_test.md
+total 520s (holdout-only, no submission)
+saved cache/echoclf_hour_test_ev.parquet 344339

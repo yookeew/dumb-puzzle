@@ -76,3 +76,11 @@ Downloads every object in the `competition-data` bucket, routed into
 `data/raw/` (monthly training files) and `data/ranking/` (`ranking.parquet`,
 `submitting.parquet`). Both are gitignored — this step is per-machine, not
 committed. Safe to re-run: it skips files already present.
+
+## Data attribution
+
+Contains data from [EUROCONTROL's Aviation Intelligence
+Unit](https://ansperformance.eu), used under its free-to-copy,
+attribution-required, non-commercial licence — see
+[external-data/LICENSE](external-data/LICENSE) for the full terms and
+[DATA_SOURCES.md](DATA_SOURCES.md) for per-dataset details.
