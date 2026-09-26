@@ -1,0 +1,4 @@
+2026-01-15: trying v2026.01.15-planes-readsb-prod-0 (2 parts)
+    50,000 traces, 1.82 GB, 1,112,006 pts kept, 211s
+    done: 66,786 traces, 3.17 GB, 1,482,279 pts, 373s
+2026-01-15: wrote adsb_20260115.parquet (1,482,279 pts, replica v2026.01.15-planes-readsb-prod-0, ok)

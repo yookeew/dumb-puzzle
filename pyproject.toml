@@ -12,6 +12,11 @@ dependencies = [
     "lightgbm>=4.7",
     "scikit-learn>=1.9",
     "networkx>=3.6",
+    "xplane-airports>=4.0",
+    "orjson>=3.10",
+    "requests>=2.32",
+    "scipy>=1.13",
+    "matplotlib>=3.9",
 ]
 
 [dependency-groups]

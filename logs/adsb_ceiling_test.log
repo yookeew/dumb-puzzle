@@ -1,0 +1,61 @@
+C:\Users\yuqiw\prc2025\tests\adsb_ceiling_test.py:82: UserWarning: Extension type 'arrow.r.vctrs' is not registered; loading as its storage type.
+
+To avoid this warning, register the extension type or set environment variable 'POLARS_UNKNOWN_EXTENSION_TYPE_BEHAVIOR' to 'load_as_storage' or 'load_as_extension'.
+
+In Polars 2.0, the default behavior will change to 'load_as_extension'.
+  rk = pl.read_parquet(RANKING).filter(pl.col("PHASE_mvt") == "DEP")
+=== fitting production model (target=mixed, seed=42) ===
+holdout fit 1110s  best_iter=7996  loss=huber  target=flip
+holdout fit 1444s  best_iter=3181  loss=huber  target=direct
+echo clf fit 1518s  best_iter=402  base_rate=0.055
+echo clf holdout  precision=0.697  recall=0.096  n_true_echo=17349  n_pred_echo=2396
+OVERALL RMSE 335.6 s  (n=344,339)
+  EDDF:191  EDDM:187  EGLL:289  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:653  LSZH:210  LTFM:268
+  2025-01:354  2025-07:320
+  False:1904  True:240
+  False:315  True:1415
+wrote reports\eval\lgb_colab.md
+total 3047s (holdout-only, no submission)
+
+==============================================================================
+production holdout: n=344,339  RMSE=335.63s
+==============================================================================
+
+1. ranking DEP rows: n=344,841
+   at covered airports: n=193,535 (56.1%)
+   per airport:
+     LTFM   n= 47,581  ( 13.8%)
+     LFPG   n= 39,872  ( 11.6%)
+     EGLL   n= 39,840  ( 11.6%)  <-- covered
+     EHAM   n= 38,182  ( 11.1%)  <-- covered
+     LEMD   n= 36,954  ( 10.7%)
+     EDDF   n= 36,317  ( 10.5%)  <-- covered
+     LEBL   n= 30,080  (  8.7%)  <-- covered
+     LIRF   n= 26,899  (  7.8%)
+     EDDM   n= 25,966  (  7.5%)  <-- covered
+     LSZH   n= 23,150  (  6.7%)  <-- covered
+
+2. covered-airport holdout rows: n=196,354 (57.0% of holdout rows)
+   covered-airport share of TOTAL squared error: 25.0%
+   per-airport holdout RMSE / % of total squared error:
+     LFPG   rmse=  579.5  n= 39,590  pct_sqerr= 34.3%
+     LIRF   rmse=  652.7  n= 26,528  pct_sqerr= 29.1%
+     EGLL   rmse=  288.6  n= 40,210  pct_sqerr=  8.6%  <-- covered
+     LTFM   rmse=  268.3  n= 46,539  pct_sqerr=  8.6%
+     EHAM   rmse=  199.8  n= 40,949  pct_sqerr=  4.2%  <-- covered
+     LEBL   rmse=  224.1  n= 28,985  pct_sqerr=  3.8%  <-- covered
+     EDDF   rmse=  190.9  n= 36,830  pct_sqerr=  3.5%  <-- covered
+     LEMD   rmse=  179.9  n= 35,328  pct_sqerr=  2.9%
+     LSZH   rmse=  209.5  n= 22,289  pct_sqerr=  2.5%  <-- covered
+     EDDM   rmse=  186.5  n= 27,091  pct_sqerr=  2.4%  <-- covered
+
+==============================================================================
+3+4. ADS-B pushback-recovery ceiling (perfect denoising of aobt3_taxi)
+==============================================================================
+
+  coverage    new RMSE    gain (s)    gain (%)
+      100%      290.64       45.00      13.41%
+       50%      313.94       21.69       6.46%
+       25%      324.97       10.66       3.18%
+
+LIRF (zero ADS-B ground coverage in the probe): 26,899 ranking DEP rows (7.8% of ranking DEP), 29.1% of holdout squared error -- structurally out of reach for this approach.
