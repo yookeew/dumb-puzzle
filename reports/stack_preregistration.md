@@ -52,4 +52,13 @@ engine's all-2025 refit submission (`run(..., submit=True)`).
 
 ## Amendments
 
-(none)
+**2026-09-27 — XGBoost dropped, before any XGBoost or CatBoost holdout result
+existed.** On free Colab (about 12.7 GB of RAM), the XGBoost GPU fit
+exhausts memory roughly 7 minutes in: the local CPU profile peaks at
+8.3 GB, of which about +3.5 GB is XGBoost's own transient during the fit.
+This held even after the group-encoding memory fix (`ffde2e1`). The primary
+stack is therefore **`lgb + cat`**. XGBoost isn't run, so there are no
+`xgb` diagnostics. The rule is otherwise unchanged. `lgb` holdout predictions
+come from the existing local cache (`prod_mixed_holdout_ev.parquet`); its
+submission comes from a local `run(engine="lgb", target="mixed",
+submit=True)`.
