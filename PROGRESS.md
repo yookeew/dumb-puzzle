@@ -3265,3 +3265,29 @@ drift was not real (or not in that direction), consistent with its own
 +-40-80 s month-to-month noise. The 2025-fitted lag stays, and v17 remains
 the base. Also, a 31 s mean shift on 19.5k rows moved the leaderboard by ~1
 point, so leaderboard A/B probes are sensitive enough to be informative.
+
+## 43. Quality-modulated ADS-B blend weights -- ADOPTED (2026-09-27)
+
+The detector now emits per-row pushback quality (`adsb_pb_gap_s`,
+`adsb_pb_dist_m`, `adsb_pb_gs`). The existing fields are unchanged apart
+from float noise of ~5e-10 m in the two distance fields.
+
+**Exploration** (training days 2025-09-15 / 2025-11-15 only; ADS-B error
+after removing each airport-tier's lag):
+- appear: first sighting > 70 m from the stand gives 159 s (vs 39-105 s);
+  already moving > 5 kt gives 188 s.
+- dwell: > 40 s sampling gap after the last stationary sample gives ~204 s
+  (vs 121-162 s); > 70 m from the stand gives 231 s.
+
+**Design** (`reports/adsb_quality_preregistration.md`, 3fc6cc9): keep the
+production blend weights and multiply by `q[tier, good/poor]` (4 factors,
+least squares, product clipped to [0, 1]).
+
+**Result:** Jul -0.40 (P(worse)=0.017), Jan -0.55, pooled 329.37 -> 328.90
+(**-0.47**, P(worse)=0.000). Factors stable across months (good x1.2-1.7,
+poor x0.62-0.75); all four groups improve. The production code
+(`adsb_blend.fit_quality`, `apply(..., q=)`) reproduces the test exactly.
+
+**v19 candidate:** `stack_lgb_cat_adsbq_partial.parquet`. Rebuilt v17 is
+byte-identical to the uploaded v17. v19 changes 93,344 rows by 32 s mean
+absolute. Final factors: appear 1.21 / 0.75, dwell 1.63 / 0.64.

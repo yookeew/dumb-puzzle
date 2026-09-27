@@ -4,6 +4,8 @@ Writes three files so the leaderboard shows each gain separately:
   data/submissions/stack_lgb_cat.parquet                NNLS stack of LightGBM + CatBoost
   data/submissions/stack_lgb_cat_adsb.parquet           + ADS-B pushback blend (§39)
   data/submissions/stack_lgb_cat_adsb_partial.parquet   + ADS-B partial-track estimate (§41)
+  data/submissions/stack_lgb_cat_adsbq_partial.parquet  the same with quality-modulated
+                                                        ADS-B blend weights (§43)
 
 Parameters come from the Jan+Jul 2025 holdout only, fit on both months together
 (the cross-fit evaluation that justified them is tests/stack_test.py):
@@ -58,7 +60,7 @@ def _ev(engine: str) -> pl.DataFrame:
 def _det(prefix: str) -> pl.DataFrame:
     return pl.concat([pl.read_parquet(p) for p in sorted(DET.glob(f"day={prefix}*.parquet"))]).select(
         "MVT_ID_mvt", "adsb_tier", "adsb_pushback_ts", "adsb_matched", "adsb_first_ts",
-        "adsb_first_own_m")
+        "adsb_first_own_m", "adsb_pb_gap_s", "adsb_pb_dist_m", "adsb_pb_gs")
 
 
 def _mvt_ts(src) -> pl.DataFrame:
@@ -119,8 +121,12 @@ def main() -> None:
           .join(_det("2025"), on="MVT_ID_mvt", how="left")
           .with_columns(adsb_taxi=pl.col("mvt_ts") - pl.col("adsb_pushback_ts")))
     p = adsb_blend.fit(ho, per_airport=True)
+    q = adsb_blend.fit_quality(ho, p)
+    print("quality factors:", {f"{t}/{ql}": round(v, 3) for (t, ql), v in sorted(q.items())})
     ho = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p)))
     pp = adsb_partial.fit(ho)
+    hoq = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p, q)))
+    ppq = adsb_partial.fit(hoq)
     print("partial: b", round(pp["b"]), "s/km | w", {k: round(v, 3) for k, v in pp["w"].items()},
           "| a", {a: round(v) for a, v in sorted(pp["a"].items())}, "| a_pooled", round(pp["a_pooled"]))
     print("ADS-B blend: tier w", {k: round(v, 3) for k, v in p["w"].items()},
@@ -166,6 +172,17 @@ def main() -> None:
           f"{(pm['partial'] - pm['base']).mean():+.1f}s; per airport "
           f"{dict(pm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
     _write(rk, f"stack_lgb_cat_adsb_partial{sfx}")
+
+    # ---- ranking: quality-modulated blend, then partial (§43)
+    rk = rk.with_columns(blendq=adsb_blend.apply(rk, p, q))
+    rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blendq")))
+    rk = rk.with_columns(partialq=pl.Series(adsb_partial.apply(rk, ppq)))
+    rk = rk.with_columns(final=_clip(rk, "partialq"))
+    e = rk.filter(adsb_blend.eligible_mask())
+    print(f"quality-modulated blend: rows {e.height:,}; mean |change vs unmodulated| "
+          f"{(e['blendq'] - e['blend']).abs().mean():.1f}s; quality mix "
+          f"{dict(e.group_by(adsb_blend.quality().alias('q')).len().iter_rows())}")
+    _write(rk, f"stack_lgb_cat_adsbq_partial{sfx}")
 
 
 if __name__ == "__main__":

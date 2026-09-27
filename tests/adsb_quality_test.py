@@ -74,12 +74,12 @@ def main() -> None:
         fac = {}
         for tier in ("appear", "dwell"):
             for ql in ("good", "poor"):
-                g = fmask & elig & (df["adsb_tier"] == tier).to_numpy() & (df["qual"] == ql).to_numpy()
+                g = fmask & elig & (df["adsb_tier"] == tier).fill_null(False).to_numpy() & (df["qual"] == ql).to_numpy()
                 fac[(tier, ql)] = float(max((r[g] * u[g]).sum() / max((u[g] ** 2).sum(), 1e-9), 0.0))
         qs[f"fit {fm}"] = fac
         mult = np.ones(df.height)
         for (tier, ql), v in fac.items():
-            g = (df["adsb_tier"] == tier).to_numpy() & (df["qual"] == ql).to_numpy()
+            g = (df["adsb_tier"] == tier).fill_null(False).to_numpy() & (df["qual"] == ql).to_numpy()
             mult[g] = v
         wq = np.clip(wrow * mult, 0, 1)
         qblend = np.where(elig, stack + wq * np.nan_to_num(corr - stack), stack)
@@ -107,7 +107,7 @@ def main() -> None:
     print("\ncross-fit results vs v17:")
     ptA, _ = score(pl.col("ym") == JUL, "A  Jul (fit Jan)")
     ptB, _ = score(pl.col("ym") == JAN, "B  Jan (fit Jul)")
-    _, pw = score(pl.lit(True), "POOLED")
+    _, pw = score(pl.col("ym").is_not_null(), "POOLED")
     print(f"  rule: {'ADOPT' if ptA < 0 and ptB < 0 and pw < 0.05 else 'REJECT'}")
     t = df.with_columns(b=pl.Series(base), n=pl.Series(new), e=pl.Series(elig)).filter("e")
     with pl.Config(tbl_formatting="ASCII_MARKDOWN", float_precision=1, tbl_rows=10):

@@ -43,3 +43,17 @@ rows given the production weights. The product is clipped to [0, 1].
 ## Amendments
 
 (none)
+
+## Results (2026-09-27, `tests/adsb_quality_test.py`, log `logs/adsb_quality_test.log`)
+
+**ADOPT.** The v17 baseline reproduced exactly (313.49 / 348.07).
+
+| | v17 | new | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 313.49 | 313.09 | −0.40 | [−0.74, −0.03] | 0.017 |
+| B: Jan (fit Jul) | 348.07 | 347.52 | −0.55 | [−1.08, −0.30] | 0.000 |
+| pooled | 329.37 | 328.90 | −0.47 | [−0.74, −0.23] | 0.000 |
+
+q factors (fit Jan / fit Jul): appear good 1.24 / 1.17, appear poor
+0.74 / 0.75, dwell good 1.54 / 1.66, dwell poor 0.65 / 0.62. All four
+tier × quality groups improve (dwell poor 174.3 → 163.6 s).
