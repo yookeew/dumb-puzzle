@@ -1,0 +1,109 @@
+
+==============================================================================
+Q1. LIRF taxi-time distribution shape (full 2025, all splits)
+==============================================================================
+
+  LIRF: n=160,704  mean=1195  sd=1332
+    p1=417 p5=601 p10=670 p25=834 p50=1025 p75=1318 p90=1689 p95=2090 p99=4019 p99.5=5524 p99.9=11575
+
+  all other airports (pooled): n=1,924,343  mean=974  sd=414
+    p1=286 p5=475 p10=560 p25=714 p50=907 p75=1163 p90=1446 p95=1671 p99=2224 p99.5=2582 p99.9=3676
+
+  LIRF histogram (log-spaced bins, n=160,704):
+    [     49,     68) n=    52 
+    [     68,     95) n=    13 
+    [     95,    131) n=    75 
+    [    131,    183) n=    47 
+    [    183,    254) n=   170 
+    [    254,    352) n=   400 
+    [    352,    490) n=  2559 ##
+    [    490,    680) n= 13167 #############
+    [    680,    945) n= 44422 #############################################
+    [    945,   1313) n= 58446 ############################################################
+    [   1313,   1825) n= 29060 #############################
+    [   1825,   2535) n=  7899 ########
+    [   2535,   3522) n=  2326 ##
+    [   3522,   4894) n=  1014 #
+    [   4894,   6799) n=   515 
+    [   6799,   9447) n=   271 
+    [   9447,  13125) n=   138 
+    [  13125,  18235) n=    46 
+    [  18235,  25336) n=    27 
+    [  25336,  35201) n=     8 
+    [  35201,  48907) n=    26 
+    [  48907,  67950) n=     9 
+    [  67950,  94408) n=    13 
+    [  94408, 131167) n=     1 
+
+  decomposition by known mechanism:
+    ordinary               n=131,562 ( 81.9%)  mean=    1101  sd=     438  share_of_total_taxi_mass= 75.5%
+    echo (|d|<30s)         n=28,662 ( 17.8%)  mean=    1379  sd=     942  share_of_total_taxi_mass= 20.6%
+    extreme (taxi>7200s)   n=   480 (  0.3%)  mean=   15762  sd=   16504  share_of_total_taxi_mass=  3.9%
+
+==============================================================================
+Q2. Runway/stand pattern check (feature-binned, not outcome-binned)
+==============================================================================
+
+  LIRF 'core' rows (excl. echo & extreme-tail): n=131,562 of 160,704 (81.9%)
+
+  mean/median taxi by RUNWAY_mvt (core rows, n>=200 only):
+    16L      n=   344  mean=   1735  median=   1629
+    16R      n= 9,610  mean=   1454  median=   1328
+    34L      n= 3,441  mean=   1317  median=   1204
+    25       n=118,023  mean=   1064  median=    970
+
+  mean taxi by (runway, hour) for the runway flagged in the prior investigation (25), July only, core rows:
+    hour= 0  n=  16  mean_taxi=    823
+    hour= 1  n=   4  mean_taxi=    944
+    hour= 2  n=  22  mean_taxi=   1026
+    hour= 3  n= 154  mean_taxi=   1141
+    hour= 4  n= 506  mean_taxi=   1046
+    hour= 5  n= 414  mean_taxi=   1211
+    hour= 6  n= 500  mean_taxi=    880
+    hour= 7  n= 660  mean_taxi=   1003
+    hour= 8  n= 759  mean_taxi=   1391
+    hour= 9  n= 600  mean_taxi=   1514
+    hour=10  n= 584  mean_taxi=   1479
+    hour=11  n= 744  mean_taxi=   1344
+    hour=12  n= 783  mean_taxi=   1276
+    hour=13  n= 689  mean_taxi=   1259
+    hour=14  n= 682  mean_taxi=   1309
+    hour=15  n= 579  mean_taxi=   1009
+    hour=16  n= 691  mean_taxi=    960
+    hour=17  n= 685  mean_taxi=   1030
+    hour=18  n= 542  mean_taxi=   1055
+    hour=19  n= 563  mean_taxi=    973
+    hour=20  n= 867  mean_taxi=   1050
+    hour=21  n= 462  mean_taxi=   1152
+    hour=22  n= 129  mean_taxi=   1225
+    hour=23  n=  32  mean_taxi=   1055
+
+  runway usage share by month (all LIRF DEP, not just core -- checks whether config genuinely shifts seasonally):
+    month= 1: 25=79%, 16R=11%, 34L=10%
+    month= 2: 25=92%, 16R=6%, 34L=2%
+    month= 3: 25=88%, 16R=7%, 34L=5%
+    month= 4: 25=90%, 16R=8%, 34L=1%
+    month= 5: 25=92%, 16R=7%, 34L=1%
+    month= 6: 25=92%, 16R=8%, 16L=0%
+    month= 7: 25=91%, 16R=8%, 34L=1%
+    month= 8: 25=94%, 16R=5%, 34L=1%
+    month= 9: 25=94%, 16R=5%, 34L=0%
+    month=10: 25=89%, 34L=6%, 16R=5%
+    month=11: 25=86%, 16R=7%, 34L=6%
+    month=12: 25=90%, 16R=9%, 34L=1%
+
+  existing feature check: does the cached feature set already encode a LIRF single/dual-runway split? (categorical RUNWAY_mvt value counts, full year)
+shape: (7, 2)
+┌────────────┬────────┐
+│ RUNWAY_mvt ┆ n      │
+│ ---        ┆ ---    │
+│ str        ┆ u32    │
+╞════════════╪════════╡
+│ 25         ┆ 144747 │
+│ 16R        ┆ 11219  │
+│ 34L        ┆ 4139   │
+│ 16L        ┆ 408    │
+│ 34R        ┆ 161    │
+│ NA         ┆ 24     │
+│ 01R        ┆ 6      │
+└────────────┴────────┘

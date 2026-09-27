@@ -1,0 +1,155 @@
+==============================================================================
+Scale of the problem
+==============================================================================
+  total holdout SSE (all 10 airports, n=344,339): 39,237,017,711
+  LIRF SSE (n=26,528): 11,576,097,213  (29.5% of total)
+  top 10 LIRF rows' SSE: 3,304,298,895  (28.5% of LIRF, 8.4% of EVERYTHING scored)
+
+==============================================================================
+The 10 rows, individually
+==============================================================================
+
+--- #1  MVT_ID_mvt=192628959.0  (9.6% of LIRF SSE, 2.82% of total) ---
+  true taxi      =   87,186s (24.2h)
+  model pred     =   53,932s (15.0h)   error = -33,254s
+  taxi_model_raw =   47,723s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.573  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 58,563s   d (BLOCK-SCHED) = -28,623s
+  SCHED=2025-07-29 20:30:00+00:00  BLOCK=2025-07-29 12:32:57+00:00  MVT(takeoff)=2025-07-30 12:46:03+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->SAEZ   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=606  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #2  MVT_ID_mvt=182646487.0  (7.9% of LIRF SSE, 2.33% of total) ---
+  true taxi      =   87,177s (24.2h)
+  model pred     =   56,910s (15.8h)   error = -30,267s
+  taxi_model_raw =   49,831s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.688  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 60,118s   d (BLOCK-SCHED) = -27,059s
+  SCHED=2025-01-24 10:55:00+00:00  BLOCK=2025-01-24 03:24:01+00:00  MVT(takeoff)=2025-01-25 03:36:58+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->EGPF   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=613  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #3  MVT_ID_mvt=192615553.0  (4.0% of LIRF SSE, 1.18% of total) ---
+  true taxi      =   87,361s (24.3h)
+  model pred     =   65,841s (18.3h)   error = -21,520s
+  taxi_model_raw =   60,593s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.414  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 73,260s   d (BLOCK-SCHED) = -14,101s
+  SCHED=2025-07-02 20:40:00+00:00  BLOCK=2025-07-02 16:44:59+00:00  MVT(takeoff)=2025-07-03 17:01:00+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LFBD   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=308  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #4  MVT_ID_mvt=192621312.0  (2.1% of LIRF SSE, 0.61% of total) ---
+  true taxi      =    1,377s (0.4h)
+  model pred     =   16,810s (4.7h)   error = +15,433s
+  taxi_model_raw =   10,535s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.607  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 20,878s   d (BLOCK-SCHED) = 19,501s
+  SCHED=2025-07-28 12:50:00+00:00  BLOCK=2025-07-28 18:15:01+00:00  MVT(takeoff)=2025-07-28 18:37:58+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LTFJ   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=807  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #5  MVT_ID_mvt=192626949.0  (1.2% of LIRF SSE, 0.34% of total) ---
+  true taxi      =      842s (0.2h)
+  model pred     =   12,407s (3.4h)   error = +11,565s
+  taxi_model_raw =    3,683s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.747  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 15,361s   d (BLOCK-SCHED) = 14,519s
+  SCHED=2025-07-27 17:05:00+00:00  BLOCK=2025-07-27 21:06:59+00:00  MVT(takeoff)=2025-07-27 21:21:01+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->KJFK   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=709  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #6  MVT_ID_mvt=192628021.0  (0.8% of LIRF SSE, 0.24% of total) ---
+  true taxi      =    1,256s (0.3h)
+  model pred     =   10,961s (3.0h)   error = +9,705s
+  taxi_model_raw =    2,423s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.747  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 13,858s   d (BLOCK-SCHED) = 12,602s
+  SCHED=2025-07-17 15:50:00+00:00  BLOCK=2025-07-17 19:20:02+00:00  MVT(takeoff)=2025-07-17 19:40:58+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LLBG   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=612  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #7  MVT_ID_mvt=192625591.0  (0.8% of LIRF SSE, 0.23% of total) ---
+  true taxi      =      959s (0.3h)
+  model pred     =   10,544s (2.9h)   error = +9,585s
+  taxi_model_raw =    2,899s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.668  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 14,339s   d (BLOCK-SCHED) = 13,380s
+  SCHED=2025-07-27 05:00:00+00:00  BLOCK=2025-07-27 08:43:00+00:00  MVT(takeoff)=2025-07-27 08:58:59+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LWSK   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=907  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #8  MVT_ID_mvt=192628379.0  (0.8% of LIRF SSE, 0.23% of total) ---
+  true taxi      =      723s (0.2h)
+  model pred     =   10,253s (2.8h)   error = +9,530s
+  taxi_model_raw =    3,740s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.563  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 15,301s   d (BLOCK-SCHED) = 14,578s
+  SCHED=2025-07-28 16:45:00+00:00  BLOCK=2025-07-28 20:47:58+00:00  MVT(takeoff)=2025-07-28 21:00:01+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LEMG   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=310  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #9  MVT_ID_mvt=192622331.0  (0.8% of LIRF SSE, 0.22% of total) ---
+  true taxi      =    1,444s (0.4h)
+  model pred     =   10,825s (3.0h)   error = +9,381s
+  taxi_model_raw =    4,195s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.731  is_echo=False  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 13,262s   d (BLOCK-SCHED) = 11,818s
+  SCHED=2025-07-21 17:20:00+00:00  BLOCK=2025-07-21 20:36:58+00:00  MVT(takeoff)=2025-07-21 21:01:02+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LOWW   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=314  AIRCRAFT_TYPE=None  OPERATOR=None
+
+--- #10  MVT_ID_mvt=192620839.0  (0.7% of LIRF SSE, 0.21% of total) ---
+  true taxi      =   14,890s (4.1h)
+  model pred     =    5,807s (1.6h)   error = -9,083s
+  taxi_model_raw =    2,255s   (pre-blend/pre-clip regressor output)
+  echo_prob=0.281  is_echo=True  has_aobt3=False  use_prior=False
+  sched_takeoff_offset (MVT-SCHED) = 14,885s   d (BLOCK-SCHED) = -5s
+  SCHED=2025-07-13 17:45:00+00:00  BLOCK=2025-07-13 17:44:55+00:00  MVT(takeoff)=2025-07-13 21:53:05+00:00
+  AOBT_3_flt = null (not NM-matched)
+  ADEP->ADES = LIRF->LFOB   ADES_FILED=None
+  FLIGHT_TYPE=None  MARKET_SEGMENT=None  FLIGHT_RULE(mvt/flt)=I/None
+  RUNWAY=25  STAND=301  AIRCRAFT_TYPE=None  OPERATOR=None
+
+==============================================================================
+Hedge-strategy what-ifs (override prediction on JUST these 10 rows, recompute overall RMSE)
+==============================================================================
+  baseline overall RMSE: 337.56s (n=344,339)
+
+  current (production pred):
+    these 10 rows' SSE: 3,304,298,895  (was 3,304,298,895)
+    new overall RMSE: 337.56s  (delta +0.00s, +0.00% of baseline RMSE)
+
+  oracle (predict true taxi exactly):
+    these 10 rows' SSE: 0  (was 3,304,298,895)
+    new overall RMSE: 323.04s  (delta -14.53s, +4.30% of baseline RMSE)
+
+  offset-anchored (predict sched_takeoff_offset):
+    these 10 rows' SSE: 3,031,412,210  (was 3,304,298,895)
+    new overall RMSE: 336.39s  (delta -1.18s, +0.35% of baseline RMSE)
+
+  clipped raw regressor, no echo blend (clip(raw,0,140000)):
+    these 10 rows' SSE: 3,942,002,229  (was 3,304,298,895)
+    new overall RMSE: 340.30s  (delta +2.73s, -0.81% of baseline RMSE)
+
+  half-hedge toward offset (avg of pred and offset):
+    these 10 rows' SSE: 3,105,687,679  (was 3,304,298,895)
+    new overall RMSE: 336.71s  (delta -0.86s, +0.25% of baseline RMSE)

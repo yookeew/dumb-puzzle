@@ -1,0 +1,66 @@
+=== building 3 arms (target=mixed, seed=42) ===
+
+=== fitting baseline (no weather, no doy) ===
+holdout fit 990s  best_iter=7998  loss=huber  target=flip
+holdout fit 1344s  best_iter=3310  loss=huber  target=direct
+echo clf fit 1419s  best_iter=401  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.096  n_true_echo=17349  n_pred_echo=2406
+OVERALL RMSE 337.6 s  (n=344,339)
+  EDDF:193  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:181  LFPG:581  LIRF:661  LSZH:212  LTFM:268
+  2025-01:356  2025-07:322
+  False:1916  True:241
+  False:316  True:1470
+wrote reports\eval\doy_base.md
+total 1745s (holdout-only, no submission)
+
+=== fitting baseline + doy/hour cyclical ===
+holdout fit 964s  best_iter=8000  loss=huber  target=flip
+holdout fit 1250s  best_iter=2475  loss=huber  target=direct
+echo clf fit 1337s  best_iter=460  base_rate=0.055
+echo clf holdout  precision=0.680  recall=0.101  n_true_echo=17349  n_pred_echo=2571
+OVERALL RMSE 337.9 s  (n=344,339)
+  EDDF:192  EDDM:190  EGLL:289  EHAM:200  LEBL:224  LEMD:180  LFPG:581  LIRF:663  LSZH:212  LTFM:268
+  2025-01:355  2025-07:323
+  False:1921  True:241
+  False:314  True:1476
+wrote reports\eval\doy_doy.md
+total 1641s (holdout-only, no submission)
+
+=== fitting baseline + doy + benign weather ===
+holdout fit 1027s  best_iter=7997  loss=huber  target=flip
+holdout fit 1385s  best_iter=2758  loss=huber  target=direct
+echo clf fit 1477s  best_iter=353  base_rate=0.055
+echo clf holdout  precision=0.694  recall=0.098  n_true_echo=17349  n_pred_echo=2451
+OVERALL RMSE 337.0 s  (n=344,339)
+  EDDF:192  EDDM:187  EGLL:288  EHAM:200  LEBL:224  LEMD:180  LFPG:580  LIRF:661  LSZH:211  LTFM:268
+  2025-01:355  2025-07:322
+  False:1916  True:240
+  False:314  True:1471
+wrote reports\eval\doy_doywx.md
+total 1766s (holdout-only, no submission)
+
+==============================================================================
+STEP 1: baseline+doy vs baseline (does calendar resolution help alone?)
+==============================================================================
+overall RMSE   baseline=337.6  treatment=337.9  delta=+0.4
+  2025-01: baseline=356.1  treatment=355.2  delta=-0.9
+  2025-07: baseline=321.8  treatment=323.3  delta=+1.5
+  LIRF: baseline=660.6  treatment=663.5  delta=+2.9  n=26,528
+cluster bootstrap: paired RMSE delta=+0.37s  95% CI=[-0.51, +1.29]  P(worse)=0.791
+
+==============================================================================
+STEP 2: baseline+doy+benign-weather vs baseline+doy (does benign weather's S26 gain survive?)
+==============================================================================
+overall RMSE   baseline=337.9  treatment=337.0  delta=-0.9
+  2025-01: baseline=355.2  treatment=354.6  delta=-0.7
+  2025-07: baseline=323.3  treatment=322.2  delta=-1.1
+  LIRF: baseline=663.5  treatment=661.0  delta=-2.5  n=26,528
+cluster bootstrap: paired RMSE delta=-0.91s  95% CI=[-1.79, -0.18]  P(worse)=0.005
+
+==============================================================================
+SUMMARY
+==============================================================================
+step 1 (doy alone):              +0.37s
+step 2 (benign wx given doy):     -0.91s
+reference (S26, no doy in either arm): benign-only vs no-weather = -1.04s overall, -3.3s LIRF
+-> benign gain survives doy: temp/dewpoint/wind carry something calendar resolution can't.

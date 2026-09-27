@@ -1,6 +1,6 @@
-# Holdout eval — lgb_colab
+# Holdout eval — geom_baseline_mixed
 
-- engine: **lgb**   |   generated: 2026-09-26 20:34
+- engine: **lgb**   |   generated: 2026-09-27 01:01
 - target mixed  |  loss huber (alpha=800.0)  |  eta 0.02  |  rounds ceiling 8000  |  early-stopped at flip=7996/direct=3181 (inner-valid 2025-06)  |  full-refit rounds ?
 - holdout = 2025-01, 2025-07 (fit on the other 10 months of 2025)
 - rows scored: 344,339 (all true taxi >= 0; no upper-bound exclusion -- the real board scores these rows too, see 'By AOBT_3_flt lane' below)
