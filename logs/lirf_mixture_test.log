@@ -1,0 +1,32 @@
+decomposition check lgb: max |reconstructed - pred| = 0.000000
+decomposition check cat: max |reconstructed - pred| = 0.000000
+stack weights for Jul rows (fit Jan): lgb 0.605 cat 0.397
+July rows 190,679; LIRF eligible 1,210 (echo 152)
+  fit on odd days: lag=-173s  w=0.276
+  fit on even days: lag=-183s  w=0.146
+
+Within-July day-split cross-fit (all July rows):
+  even days (fit odd)                base=  320.77  new=  320.77  delta=  -0.00  CI[-0.31,+0.41]  P(worse)=0.455
+  odd days (fit even)                base=  306.49  new=  306.42  delta=  -0.07  CI[-0.23,+0.10]  P(worse)=0.188
+  POOLED July                        base=  313.49  new=  313.46  delta=  -0.04  CI[-0.22,+0.19]  P(worse)=0.338
+  LIRF rows only                     base=  757.02  new=  756.82  delta=  -0.20  CI[-1.14,+0.95]  P(worse)=0.325
+  minus best 3 days ['2025-07-28', '2025-07-21', '2025-07-10'] base=  310.41  new=  310.46  delta=  +0.05  CI[-0.11,+0.27]  P(worse)=0.623
+
+rule (both halves < 0, pooled P(worse) < 0.05, survives dropping best 3 days): REJECT
+
+LIRF eligible rows by true is_echo and by echo-probability band:
+shape: (2, 5)
+| is_echo | n    | base | new | adsb_raw |
+| ---     | ---  | ---  | --- | ---      |
+| bool    | u32  | f64  | f64 | f64      |
+|---------|------|------|-----|----------|
+| false   | 1058 | 706  | 688 | 529      |
+| true    | 152  | 876  | 953 | 3118     |
+shape: (3, 5)
+| e_band  | n   | base | new  | adsb_raw |
+| ---     | --- | ---  | ---  | ---      |
+| str     | u32 | f64  | f64  | f64      |
+|---------|-----|------|------|----------|
+| 0.1-0.5 | 359 | 806  | 792  | 761      |
+| <0.1    | 777 | 395  | 384  | 538      |
+| >=0.5   | 74  | 1979 | 2014 | 4258     |

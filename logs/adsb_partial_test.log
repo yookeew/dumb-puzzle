@@ -1,0 +1,47 @@
+holdout rows 344,339; base (stack + ADS-B, cross-fit) RMSE 329.97
+partial-eligible rows: 38,225
+shape: (2, 9)
+| ym      | LEBL | EDDF | EGLL | ... | LFPG | EHAM | EDDM | LSZH |
+| ---     | ---  | ---  | ---  |     | ---  | ---  | ---  | ---  |
+| str     | u32  | u32  | u32  |     | u32  | u32  | u32  | u32  |
+|---------|------|------|------|-----|------|------|------|------|
+| 2025-01 | 4213 | 4123 | 820  | ... | null | 5257 | 1811 | 3100 |
+| 2025-07 | 4353 | 5775 | 222  | ... | 68   | 2827 | 1458 | 4077 |
+
+PRIMARY (one weight):
+  fit 2025-01: b=239 s/km  w={'all': 0.1717092352359613}  a={'EDDF': 284, 'EDDM': 165, 'EGLL': 530, 'EHAM': 182, 'LEBL': 250, 'LSZH': 242}  a_pooled=0
+  fit 2025-07: b=245 s/km  w={'all': 0.15890433220616523}  a={'EDDF': 276, 'EDDM': 186, 'EGLL': 673, 'EHAM': 117, 'LEBL': 275, 'LEMD': 359, 'LSZH': 235}  a_pooled=356
+  A  Jul (fit Jan)           base= 314.02  new= 313.61  delta= -0.41  CI[-0.62,-0.21]  P(worse)=0.000
+  B  Jan (fit Jul)           base= 348.75  new= 348.25  delta= -0.50  CI[-0.87,-0.32]  P(worse)=0.000
+  POOLED                     base= 329.97  new= 329.52  delta= -0.45  CI[-0.62,-0.32]  P(worse)=0.000
+  rule: ADOPT
+
+  per airport (all rows):
+shape: (10, 5)
+| ADEP_mvt | n_elig | base  | new   | delta |
+| ---      | ---    | ---   | ---   | ---   |
+| str      | u32    | f64   | f64   | f64   |
+|----------|--------|-------|-------|-------|
+| EDDF     | 9898   | 184.9 | 183.3 | -1.6  |
+| EDDM     | 3269   | 156.7 | 154.6 | -2.1  |
+| EGLL     | 1042   | 284.5 | 284.3 | -0.2  |
+| EHAM     | 8084   | 183.5 | 183.1 | -0.4  |
+| LEBL     | 8566   | 213.9 | 210.8 | -3.1  |
+| LEMD     | 121    | 179.3 | 179.3 | -0.0  |
+| LFPG     | 68     | 576.0 | 576.0 | -0.0  |
+| LIRF     | 0      | 647.1 | 647.1 | 0.0   |
+| LSZH     | 7177   | 203.9 | 202.2 | -1.7  |
+| LTFM     | 0      | 266.4 | 266.4 | 0.0   |
+  per distance band (eligible rows):
+shape: (2, 4)
+| band      | n     | base  | new   |
+| ---       | ---   | ---   | ---   |
+| str       | u32   | f64   | f64   |
+|-----------|-------|-------|-------|
+| 500-1000m | 14078 | 205.6 | 206.2 |
+| <500m     | 24147 | 180.9 | 168.4 |
+
+SECONDARY (two distance-band weights):
+  fit 2025-01: w={'near': 0.279, 'far': 0.07}
+  fit 2025-07: w={'near': 0.257, 'far': 0.09}
+  vs primary: Jul 313.61 -> 313.49  Jan 348.25 -> 348.07  => ADOPT over primary

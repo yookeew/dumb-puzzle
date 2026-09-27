@@ -1,8 +1,13 @@
 """Build the stacked submissions (reports/stack_preregistration.md, PROGRESS.md §39).
 
-Writes two files so the leaderboard shows each gain separately:
-  data/submissions/stack_lgb_cat.parquet        NNLS stack of LightGBM + CatBoost
-  data/submissions/stack_lgb_cat_adsb.parquet   the same + ADS-B pushback blend
+Writes three files so the leaderboard shows each gain separately:
+  data/submissions/stack_lgb_cat.parquet                NNLS stack of LightGBM + CatBoost
+  data/submissions/stack_lgb_cat_adsb.parquet           + ADS-B pushback blend (§39)
+  data/submissions/stack_lgb_cat_adsb_partial.parquet   + ADS-B partial-track estimate (§41)
+  data/submissions/stack_lgb_cat_adsbq_partial.parquet  the same with quality-modulated
+                                                        ADS-B blend weights (§43)
+  data/submissions/stack_lgb_cat_adsbq_partial_lirf24.parquet
+                                                        + LIRF "+24 h" label adjustment (§44)
 
 Parameters come from the Jan+Jul 2025 holdout only, fit on both months together
 (the cross-fit evaluation that justified them is tests/stack_test.py):
@@ -13,7 +18,11 @@ They are applied to each engine's all-2025 refit submission
 ADS-B part, to 2026 ranking rows with a recovered pushback
 (cache/adsb_pushback/day=2026-*.parquet).
 
-Run:  .venv/Scripts/python.exe src/post/stack_submit.py
+Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...]
+
+--lag-shift adds SECONDS to that airport's ADS-B lag for the 2026 ranking rows
+only (a leaderboard probe of the year-over-year drift, tests/adsb_drift_test.py);
+the files then get a "_lagshift" suffix and the unshifted files are not written.
 """
 
 from __future__ import annotations
@@ -30,7 +39,7 @@ from scipy.optimize import nnls
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from post import adsb_blend  # noqa: E402
+from post import adsb_blend, adsb_partial, lirf_dayplus  # noqa: E402
 
 EVAL = ROOT / "cache" / "eval"
 SUB = ROOT / "data" / "submissions"
@@ -52,13 +61,16 @@ def _ev(engine: str) -> pl.DataFrame:
 
 def _det(prefix: str) -> pl.DataFrame:
     return pl.concat([pl.read_parquet(p) for p in sorted(DET.glob(f"day={prefix}*.parquet"))]).select(
-        "MVT_ID_mvt", "adsb_tier", "adsb_pushback_ts")
+        "MVT_ID_mvt", "adsb_tier", "adsb_pushback_ts", "adsb_matched", "adsb_first_ts",
+        "adsb_first_own_m", "adsb_pb_gap_s", "adsb_pb_dist_m", "adsb_pb_gs")
 
 
 def _mvt_ts(src) -> pl.DataFrame:
     return (pl.scan_parquet(src).filter(pl.col("PHASE_mvt") == "DEP")
             .select(pl.col("MVT_ID_mvt").cast(pl.Int64), "ADEP_mvt",
-                    mvt_ts=pl.col("MVT_TIME_UTC_mvt").dt.epoch("ms") / 1000.0).collect())
+                    mvt_ts=pl.col("MVT_TIME_UTC_mvt").dt.epoch("ms") / 1000.0,
+                    offset_s=(pl.col("MVT_TIME_UTC_mvt") - pl.col("SCHED_TIME_UTC_mvt")).dt.total_seconds(),
+                    nm_unmatched=pl.col("AOBT_3_flt").is_null()).collect())
 
 
 def _clip(df: pl.DataFrame, col: str) -> pl.Expr:
@@ -83,7 +95,20 @@ def _write(ids_preds: pl.DataFrame, name: str) -> None:
           f"max={s.max()}")
 
 
+def _lag_shifts() -> dict[str, float]:
+    out = {}
+    if "--lag-shift" in sys.argv:
+        for a in sys.argv[sys.argv.index("--lag-shift") + 1:]:
+            if a.startswith("--"):
+                break
+            k, v = a.split("=")
+            out[k] = float(v)
+    return out
+
+
 def main() -> None:
+    shifts = _lag_shifts()
+    sfx = "_lagshift" if shifts else ""
     # ---- stack weights from the full holdout
     ho = _ev(ENGINES[0])
     for e in ENGINES[1:]:
@@ -100,6 +125,14 @@ def main() -> None:
           .join(_det("2025"), on="MVT_ID_mvt", how="left")
           .with_columns(adsb_taxi=pl.col("mvt_ts") - pl.col("adsb_pushback_ts")))
     p = adsb_blend.fit(ho, per_airport=True)
+    q = adsb_blend.fit_quality(ho, p)
+    print("quality factors:", {f"{t}/{ql}": round(v, 3) for (t, ql), v in sorted(q.items())})
+    ho = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p)))
+    pp = adsb_partial.fit(ho)
+    hoq = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p, q)))
+    ppq = adsb_partial.fit(hoq)
+    print("partial: b", round(pp["b"]), "s/km | w", {k: round(v, 3) for k, v in pp["w"].items()},
+          "| a", {a: round(v) for a, v in sorted(pp["a"].items())}, "| a_pooled", round(pp["a_pooled"]))
     print("ADS-B blend: tier w", {k: round(v, 3) for k, v in p["w"].items()},
           "| lags", {a: round(v) for a, v in sorted(p["lags"].items())},
           "| cells", {f"{a}/{t}": round(v, 2) for (a, t), v in sorted(p["cells"].items())})
@@ -114,7 +147,11 @@ def main() -> None:
     assert rk["ADEP_mvt"].null_count() == 0, "submission ids missing from ranking.parquet"
     rk = rk.with_columns(pred=pl.Series(rk.select(ENGINES).to_numpy() @ w))
     rk = rk.with_columns(final=_clip(rk, "pred"))
-    _write(rk, "stack_lgb_cat")
+    if not shifts:
+        _write(rk, "stack_lgb_cat")
+    if shifts:  # 2026-only lag adjustment; holdout-fitted p is otherwise unchanged
+        p = {**p, "lags": {a: v + shifts.get(a, 0.0) for a, v in p["lags"].items()}}
+        print("2026 lag shifts applied:", shifts, "-> lags", {a: round(v) for a, v in sorted(p["lags"].items())})
 
     # ---- ranking: + ADS-B blend
     rk = (rk.join(_det("2026"), on="MVT_ID_mvt", how="left")
@@ -128,7 +165,38 @@ def main() -> None:
         print(changed.group_by("ADEP_mvt").agg(
             pl.len().alias("n"), (pl.col("final") - pl.col("pred")).mean().alias("mean_shift_s"),
             (pl.col("final") - pl.col("pred")).abs().mean().alias("mean_abs_shift_s")).sort("ADEP_mvt"))
-    _write(rk, "stack_lgb_cat_adsb")
+    _write(rk, f"stack_lgb_cat_adsb{sfx}")
+
+    # ---- ranking: + ADS-B partial-track estimate
+    rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blend")))
+    rk = rk.with_columns(partial=pl.Series(adsb_partial.apply(rk, pp)))
+    rk = rk.with_columns(final=_clip(rk, "partial"))
+    pm = rk.filter(adsb_partial.mask())
+    print(f"partial-track rows: {pm.height:,} ({pm.height / rk.height * 100:.1f}%); mean shift "
+          f"{(pm['partial'] - pm['base']).mean():+.1f}s; per airport "
+          f"{dict(pm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
+    _write(rk, f"stack_lgb_cat_adsb_partial{sfx}")
+
+    # ---- ranking: quality-modulated blend, then partial (§43)
+    rk = rk.with_columns(blendq=adsb_blend.apply(rk, p, q))
+    rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blendq")))
+    rk = rk.with_columns(partialq=pl.Series(adsb_partial.apply(rk, ppq)))
+    rk = rk.with_columns(final=_clip(rk, "partialq"))
+    e = rk.filter(adsb_blend.eligible_mask())
+    print(f"quality-modulated blend: rows {e.height:,}; mean |change vs unmodulated| "
+          f"{(e['blendq'] - e['blend']).abs().mean():.1f}s; quality mix "
+          f"{dict(e.group_by(adsb_blend.quality().alias('q')).len().iter_rows())}")
+    _write(rk, f"stack_lgb_cat_adsbq_partial{sfx}")
+
+    # ---- ranking: LIRF "+24 h" label adjustment (§44)
+    lp = lirf_dayplus.fit()
+    rk = rk.with_columns(lirf24=lirf_dayplus.apply(rk, "partialq", lp))
+    rk = rk.with_columns(final=_clip(rk, "lirf24"))
+    sg = rk.filter(lirf_dayplus.segment())
+    print(f"LIRF +24h: p={lp['p']:.3f} (from {lp['n_seg']} training-month rows), t0={lp['t0']:.0f}s; "
+          f"ranking segment rows {sg.height} (Jan {sg.filter(pl.col('mvt_ts') < 1.77e9).height}), "
+          f"mean shift {(sg['lirf24'] - sg['partialq']).mean():+.0f}s")
+    _write(rk, f"stack_lgb_cat_adsbq_partial_lirf24{sfx}")
 
 
 if __name__ == "__main__":

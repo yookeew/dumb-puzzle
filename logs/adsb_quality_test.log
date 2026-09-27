@@ -1,0 +1,17 @@
+q factors, fit 2025-01: appear/good=1.24  appear/poor=0.74  dwell/good=1.54  dwell/poor=0.65
+q factors, fit 2025-07: appear/good=1.17  appear/poor=0.75  dwell/good=1.66  dwell/poor=0.62
+
+cross-fit results vs v17:
+  A  Jul (fit Jan)         v17= 313.49  new= 313.09  delta= -0.40  CI[-0.74,-0.03]  P(worse)=0.017
+  B  Jan (fit Jul)         v17= 348.07  new= 347.52  delta= -0.55  CI[-1.08,-0.30]  P(worse)=0.000
+  POOLED                   v17= 329.37  new= 328.90  delta= -0.47  CI[-0.74,-0.23]  P(worse)=0.000
+  rule: ADOPT
+shape: (4, 5)
+| adsb_tier | qual | rows  | v17   | new   |
+| ---       | ---  | ---   | ---   | ---   |
+| str       | str  | u32   | f64   | f64   |
+|-----------|------|-------|-------|-------|
+| appear    | good | 14632 | 106.6 | 104.0 |
+| appear    | poor | 8578  | 135.9 | 130.7 |
+| dwell     | good | 19554 | 138.3 | 132.9 |
+| dwell     | poor | 16119 | 174.3 | 163.6 |
