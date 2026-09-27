@@ -29,6 +29,11 @@ of that day at every challenge airport:
   adsb_first_own_m (its distance to the own stand), adsb_min_own_m (closest
   approach to the own stand over the run); the two distances are null when
   the stand has no coordinates.
+  Pushback quality, for rows with a tier: adsb_pb_gap_s (for dwell, the
+  sampling gap between the last stationary at-stand sample and the next
+  sample; for appear/pass, the gap between the pushback sample and the next
+  sample), adsb_pb_dist_m (pushback sample's distance to the own stand),
+  adsb_pb_gs (its ground speed, kt).
 
 Run:  .venv/Scripts/python.exe src/link/adsb_pushback.py
 """
@@ -66,7 +71,8 @@ SCHEMA = {"MVT_ID_mvt": pl.Int64, "airport": pl.Utf8, "adsb_day_coverage": pl.Bo
           "adsb_matched": pl.Boolean, "adsb_tier": pl.Utf8, "adsb_pushback_ts": pl.Float64,
           "adsb_takeoff_gap_s": pl.Float64, "adsb_n_pts": pl.Int64,
           "adsb_first_ts": pl.Float64, "adsb_first_gs": pl.Float64,
-          "adsb_first_own_m": pl.Float64, "adsb_min_own_m": pl.Float64}
+          "adsb_first_own_m": pl.Float64, "adsb_min_own_m": pl.Float64,
+          "adsb_pb_gap_s": pl.Float64, "adsb_pb_dist_m": pl.Float64, "adsb_pb_gs": pl.Float64}
 
 
 def to_xy(lat, lon, lat0):
@@ -92,17 +98,20 @@ def surface_runs(ts, gs):
 
 
 def pushback(ts, gs, d_own):
-    """(pushback_ts, tier) for one surface run; tier None = censored."""
+    """(pushback_ts, tier, k) for one surface run; tier None = censored.
+
+    k indexes the sample the quality fields describe: the last stationary
+    at-stand sample for dwell, the pushback sample itself otherwise."""
     at = np.flatnonzero(d_own < R_STAND)
     if len(at) == 0:
-        return np.nan, None
+        return np.nan, None, None
     stat = at[gs[at] <= STATIONARY_GS]
     if len(stat):
         k = stat[-1]
-        return (ts[k + 1] if k + 1 < len(ts) else ts[k]), "dwell"
+        return (ts[k + 1] if k + 1 < len(ts) else ts[k]), "dwell", int(k)
     if at[0] == 0:
-        return ts[0], "appear"
-    return ts[at[0]], "pass"
+        return ts[0], "appear", 0
+    return ts[at[0]], "pass", int(at[0])
 
 
 def departures(day: dt.date) -> pl.DataFrame:
@@ -129,7 +138,9 @@ def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
                                      adsb_tier=None, adsb_pushback_ts=None,
                                      adsb_takeoff_gap_s=None, adsb_n_pts=None,
                                      adsb_first_ts=None, adsb_first_gs=None,
-                                     adsb_first_own_m=None, adsb_min_own_m=None) for r in recs}
+                                     adsb_first_own_m=None, adsb_min_own_m=None,
+                                     adsb_pb_gap_s=None, adsb_pb_dist_m=None,
+                                     adsb_pb_gs=None) for r in recs}
         sub = adsb.filter(pl.col("airport") == ap)
         ap_pos = pos.filter(pl.col("airport") == ap)
         if sub.height and ap_pos.height:
@@ -171,9 +182,11 @@ def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
                     if d_own is not None:
                         row.update(adsb_first_own_m=float(d_own[0]),
                                    adsb_min_own_m=float(d_own.min()))
-                        pb, tier = pushback(ts, gs, d_own)
+                        pb, tier, k = pushback(ts, gs, d_own)
                         if tier is not None:
-                            row.update(adsb_tier=tier, adsb_pushback_ts=float(pb))
+                            row.update(adsb_tier=tier, adsb_pushback_ts=float(pb),
+                                       adsb_pb_gap_s=float(ts[k + 1] - ts[k]) if k + 1 < len(ts) else None,
+                                       adsb_pb_dist_m=float(d_own[k]), adsb_pb_gs=float(gs[k]))
         out.extend(res.values())
     return pl.DataFrame(out, schema=SCHEMA)
 
