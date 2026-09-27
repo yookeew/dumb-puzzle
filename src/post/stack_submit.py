@@ -1,8 +1,9 @@
 """Build the stacked submissions (reports/stack_preregistration.md, PROGRESS.md §39).
 
-Writes two files so the leaderboard shows each gain separately:
-  data/submissions/stack_lgb_cat.parquet        NNLS stack of LightGBM + CatBoost
-  data/submissions/stack_lgb_cat_adsb.parquet   the same + ADS-B pushback blend
+Writes three files so the leaderboard shows each gain separately:
+  data/submissions/stack_lgb_cat.parquet                NNLS stack of LightGBM + CatBoost
+  data/submissions/stack_lgb_cat_adsb.parquet           + ADS-B pushback blend (§39)
+  data/submissions/stack_lgb_cat_adsb_partial.parquet   + ADS-B partial-track estimate (§41)
 
 Parameters come from the Jan+Jul 2025 holdout only, fit on both months together
 (the cross-fit evaluation that justified them is tests/stack_test.py):
@@ -30,7 +31,7 @@ from scipy.optimize import nnls
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from post import adsb_blend  # noqa: E402
+from post import adsb_blend, adsb_partial  # noqa: E402
 
 EVAL = ROOT / "cache" / "eval"
 SUB = ROOT / "data" / "submissions"
@@ -52,7 +53,8 @@ def _ev(engine: str) -> pl.DataFrame:
 
 def _det(prefix: str) -> pl.DataFrame:
     return pl.concat([pl.read_parquet(p) for p in sorted(DET.glob(f"day={prefix}*.parquet"))]).select(
-        "MVT_ID_mvt", "adsb_tier", "adsb_pushback_ts")
+        "MVT_ID_mvt", "adsb_tier", "adsb_pushback_ts", "adsb_matched", "adsb_first_ts",
+        "adsb_first_own_m")
 
 
 def _mvt_ts(src) -> pl.DataFrame:
@@ -100,6 +102,10 @@ def main() -> None:
           .join(_det("2025"), on="MVT_ID_mvt", how="left")
           .with_columns(adsb_taxi=pl.col("mvt_ts") - pl.col("adsb_pushback_ts")))
     p = adsb_blend.fit(ho, per_airport=True)
+    ho = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p)))
+    pp = adsb_partial.fit(ho)
+    print("partial: b", round(pp["b"]), "s/km | w", {k: round(v, 3) for k, v in pp["w"].items()},
+          "| a", {a: round(v) for a, v in sorted(pp["a"].items())}, "| a_pooled", round(pp["a_pooled"]))
     print("ADS-B blend: tier w", {k: round(v, 3) for k, v in p["w"].items()},
           "| lags", {a: round(v) for a, v in sorted(p["lags"].items())},
           "| cells", {f"{a}/{t}": round(v, 2) for (a, t), v in sorted(p["cells"].items())})
@@ -129,6 +135,16 @@ def main() -> None:
             pl.len().alias("n"), (pl.col("final") - pl.col("pred")).mean().alias("mean_shift_s"),
             (pl.col("final") - pl.col("pred")).abs().mean().alias("mean_abs_shift_s")).sort("ADEP_mvt"))
     _write(rk, "stack_lgb_cat_adsb")
+
+    # ---- ranking: + ADS-B partial-track estimate
+    rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blend")))
+    rk = rk.with_columns(partial=pl.Series(adsb_partial.apply(rk, pp)))
+    rk = rk.with_columns(final=_clip(rk, "partial"))
+    pm = rk.filter(adsb_partial.mask())
+    print(f"partial-track rows: {pm.height:,} ({pm.height / rk.height * 100:.1f}%); mean shift "
+          f"{(pm['partial'] - pm['base']).mean():+.1f}s; per airport "
+          f"{dict(pm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
+    _write(rk, "stack_lgb_cat_adsb_partial")
 
 
 if __name__ == "__main__":

@@ -48,4 +48,32 @@ median abs error 179 s). So it enters as a weighted nudge, not a replacement.
 
 ## Amendments
 
-(none)
+(none; the rules above were applied unchanged)
+
+## Results (2026-09-27, `tests/adsb_partial_test.py`, log `logs/adsb_partial_test.log`)
+
+**Primary: ADOPT.** Base = stack + ADS-B, cross-fit, 329.97.
+
+| | base | + partial | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 314.02 | 313.61 | −0.41 | [−0.62, −0.21] | 0.000 |
+| B: Jan (fit Jul) | 348.75 | 348.25 | −0.50 | [−0.87, −0.32] | 0.000 |
+| pooled | 329.97 | 329.52 | −0.45 | [−0.62, −0.32] | 0.000 |
+
+- Fitted values: b ≈ 240 s/km; w 0.17 / 0.16. There are 38,225 eligible
+  holdout rows.
+- Per airport: LEBL −3.1, EDDM −2.1, LSZH −1.7, EDDF −1.6, EHAM −0.4; none
+  worse.
+- The first-sighting-under-500 m rows go 180.9 → 168.4 s. The 500–1000 m
+  rows go 205.6 → 206.2 s under the single weight.
+
+**Secondary (two distance-band weights): beats the primary in both
+directions** (Jul 313.61 → 313.49, Jan 348.25 → 348.07), so it's adopted.
+Band weights: near 0.28 / 0.26, far 0.07 / 0.09.
+
+**Known flaw, negligible here.** The "pooled" intercept for airports with
+< 100 fit rows is a column that is all zeros when every airport in the fit
+month has ≥ 100 rows. That happened when fitting on January, so July's LEMD
+(121 rows) and LFPG (68 rows) got an intercept of 0. Their per-airport
+effect rounds to 0.0 s. In the final Jan+Jul fit only LFPG (68 rows) uses
+it, fitted on its own rows (356 s).

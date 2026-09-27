@@ -3197,4 +3197,32 @@ comes first:
 2. The LIRF echo mixture (new pre-registration).
 3. EGLL re-check.
 
-The top team is at ~240.
+The top team is at ~230.
+
+## 41. ADS-B partial-track estimate -- ADOPTED, pre-registered, small
+    (2026-09-27)
+
+Top team now ~224 (we're at 277). Departures matched to an ADS-B track that
+never shows pushback were unused: about 100k ranking rows, more than the
+94.5k already blended. The detector now emits first-sighting fields
+(`adsb_first_ts`, `adsb_first_gs`, `adsb_first_own_m`, `adsb_min_own_m`); the
+existing columns were verified unchanged.
+
+**Design.** Explored only on 2025-09-15 / 2025-11-15 (training months), so
+the holdout stayed unseen. `L = MVT_TIME - first_seen`. The unseen part
+(taxi - L) has IQR ~250 s when first seen < 600 m from the stand, against
+~450 s for taxi. It's useless beyond ~1 km. As a standalone estimate it's
+heavy-tailed (RMSE 429 vs taxi sd 364), so it goes in as a weighted nudge.
+Pre-registration: `reports/adsb_partial_preregistration.md` (987073b).
+
+**Result** (`tests/adsb_partial_test.py`), on top of cross-fit stack +
+ADS-B: pooled 329.97 -> 329.52 (**-0.45**, CI [-0.62, -0.32], P(worse)=
+0.000); Jul -0.41, Jan -0.50. The two-band variant (first sighting < 500 m /
+500-1000 m) beats the single weight in both directions and ships. Its
+weights are ~0.27 near and ~0.08 far. LEBL -3.1, EDDM -2.1, LSZH -1.7, EDDF
+-1.6 per airport. Small on the holdout, but the ranking set has 47,304
+eligible rows (13.7%) against 38,225 (11.1%) in the holdout, including 8,665
+at LEMD, whose intercept comes from only ~120 holdout rows.
+
+**Submission v17 candidate:** `stack_lgb_cat_adsb_partial.parquet`
+(`src/post/adsb_partial.py`, verified to reproduce the test exactly).
