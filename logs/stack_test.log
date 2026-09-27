@@ -1,0 +1,47 @@
+C:\Users\yuqiw\prc2025\tests\adsb_blend_test.py:60: UserWarning: Extension type 'arrow.r.vctrs' is not registered; loading as its storage type.
+
+To avoid this warning, register the extension type or set environment variable 'POLARS_UNKNOWN_EXTENSION_TYPE_BEHAVIOR' to 'load_as_storage' or 'load_as_extension'.
+
+In Polars 2.0, the default behavior will change to 'load_as_extension'.
+  .collect())
+loading holdout predictions
+  lgb: prod_mixed_holdout_ev.parquet, n=344,339
+  xgb: missing (xgb_mixed_holdout_ev.parquet), skipped
+  cat: cat_mixed_holdout_ev.parquet, n=344,339
+
+single models vs lgb (diagnostic):
+  cat                            base= 335.63  new= 336.72  delta= +1.08  CI[-3.85,+8.24]  P(worse)=0.604
+
+2-model subsets (diagnostic, cross-fit):
+  weights {'fit 2025-01': {'lgb': np.float64(0.605), 'cat': np.float64(0.397)}, 'fit 2025-07': {'lgb': np.float64(0.48), 'cat': np.float64(0.54)}}
+  lgb+cat                        base= 335.63  new= 333.08  delta= -2.55  CI[-4.77,-0.05]  P(worse)=0.024
+
+PRIMARY stack lgb+cat (cross-fit NNLS, no intercept):
+  weights {'fit 2025-01': {'lgb': np.float64(0.605), 'cat': np.float64(0.397)}, 'fit 2025-07': {'lgb': np.float64(0.48), 'cat': np.float64(0.54)}}
+  A  Jul (fit Jan)               base= 319.76  new= 316.11  delta= -3.65  CI[-5.48,-1.53]  P(worse)=0.000
+  B  Jan (fit Jul)               base= 354.34  new= 353.01  delta= -1.33  CI[-5.44,+3.28]  P(worse)=0.251
+  POOLED                         base= 335.63  new= 333.08  delta= -2.55  CI[-4.77,-0.15]  P(worse)=0.021
+  rule: ADOPT
+
+  per airport:
+shape: (10, 4)
+| ADEP_mvt | lgb    | stack  | delta |
+| ---      | ---    | ---    | ---   |
+| str      | f64    | f64    | f64   |
+|----------|--------|--------|-------|
+| EDDF     | 190.88 | 188.84 | -2.05 |
+| EDDM     | 186.52 | 185.36 | -1.16 |
+| EGLL     | 288.61 | 285.49 | -3.11 |
+| EHAM     | 199.84 | 197.55 | -2.29 |
+| LEBL     | 224.11 | 222.89 | -1.22 |
+| LEMD     | 179.93 | 179.29 | -0.64 |
+| LFPG     | 579.47 | 575.96 | -3.51 |
+| LIRF     | 652.65 | 647.10 | -5.55 |
+| LSZH     | 209.53 | 207.80 | -1.73 |
+| LTFM     | 268.25 | 266.42 | -1.83 |
+
+ADS-B blend on top of the stack (refit, cross-fit, LIRF excluded):
+  stack+ADS-B vs stack, Jul      base= 316.11  new= 314.02  delta= -2.09  CI[-2.94,-1.38]  P(worse)=0.000
+  stack+ADS-B vs stack, Jan      base= 353.01  new= 348.75  delta= -4.27  CI[-7.50,-2.66]  P(worse)=0.000
+  stack+ADS-B vs lgb, POOLED     base= 335.63  new= 329.97  delta= -5.66  CI[-8.30,-3.08]  P(worse)=0.000
+  keep ADS-B on top: True

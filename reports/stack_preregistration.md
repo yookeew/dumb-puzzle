@@ -72,3 +72,27 @@ June inner-validation values had been seen, no holdout score. New settings:
 rate 0.05 for the CatBoost regressors (`run(eta=0.05)`). Everything else is
 unchanged. The run is holdout-only first (`submit=False`); the submission
 refit happens only if the stack is adopted.
+
+## Results (2026-09-27, `tests/stack_test.py`, log `logs/stack_test.log`)
+
+CatBoost alone scored 336.72 on the holdout (LightGBM 335.63). It's better at
+EDDF, EGLL, EHAM, LEBL, LFPG and LSZH, and worse at LIRF (670 vs 653).
+
+**Primary stack lgb+cat: ADOPT.**
+
+| | lgb | stack | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 319.76 | 316.11 | −3.65 | [−5.48, −1.53] | 0.000 |
+| B: Jan (fit Jul) | 354.34 | 353.01 | −1.33 | [−5.44, +3.28] | 0.251 |
+| pooled | 335.63 | 333.08 | −2.55 | [−4.77, −0.15] | 0.021 |
+
+- Every airport improves (LIRF −5.6, LFPG −3.5, EGLL −3.1).
+- January's gain alone isn't significant; the rule (both point deltas < 0,
+  pooled P(worse) < 0.05) is met.
+- Weights: lgb 0.61 / cat 0.40 (fit on Jan), 0.48 / 0.54 (fit on Jul);
+  full-holdout 0.544 / 0.468.
+
+**ADS-B on top: kept.** Stack + ADS-B against stack alone: Jul −2.09, Jan
+−4.27 (both P(worse) = 0.000). Against lgb alone, pooled: 335.63 → 329.97.
+
+**Leaderboard:** v15 (stack) 296, v16 (stack + ADS-B) **277**, from 302.

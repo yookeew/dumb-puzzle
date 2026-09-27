@@ -1,0 +1,19 @@
+stack weights (full holdout): {'lgb': np.float64(0.5443), 'cat': np.float64(0.4676)}
+holdout in-sample RMSE: lgb 335.63  stack 332.41
+ADS-B blend: tier w {'appear': 0.66, 'dwell': 0.409} | lags {'EDDF': -31, 'EDDM': -49, 'EGLL': -169, 'EHAM': -22, 'LEBL': -36, 'LEMD': -136, 'LFPG': -39, 'LSZH': -27} | cells {'EDDF/appear': 0.72, 'EDDF/dwell': 0.33, 'EDDM/appear': 0.87, 'EDDM/dwell': 0.57, 'EGLL/appear': 0.81, 'EGLL/dwell': 0.28, 'EHAM/appear': 0.55, 'EHAM/dwell': 0.35, 'LEBL/appear': 0.8, 'LEBL/dwell': 0.44, 'LSZH/appear': 0.52, 'LSZH/dwell': 0.5}
+wrote stack_lgb_cat.parquet  n=344,841  median=970  mean=1047.5  max=112060
+ADS-B blended ranking rows: 94,529 of 344,841 (27.4%); mean shift -27.2s
+shape: (8, 4)
+| ADEP_mvt | n     | mean_shift_s | mean_abs_shift_s |
+| ---      | ---   | ---          | ---              |
+| str      | u32   | f64          | f64              |
+|----------|-------|--------------|------------------|
+| EDDF     | 1535  | -39.2        | 87.5             |
+| EDDM     | 19797 | -32.9        | 103.4            |
+| EGLL     | 19547 | -31.4        | 97.4             |
+| EHAM     | 28380 | -10.0        | 83.0             |
+| LEBL     | 12257 | -41.3        | 87.9             |
+| LEMD     | 6593  | -24.2        | 83.2             |
+| LFPG     | 24    | -9.7         | 75.4             |
+| LSZH     | 6396  | -46.8        | 89.4             |
+wrote stack_lgb_cat_adsb.parquet  n=344,841  median=966  mean=1040.1  max=112060

@@ -3144,3 +3144,57 @@ most exposed to drift.
 4. Partial-track floor for matched-but-no-stand departures
    (movement-derived: T - first_seen plus stand-to-first-seen distance / typical
    speed); extends coverage to LFPG/LEMD.
+
+## 40. LightGBM + CatBoost stack, then ADS-B on top -- leaderboard
+    302 -> 296 -> 277 (2026-09-27)
+
+**Second model family.** XGBoost was dropped: its GPU fit ran out of memory
+on free Colab even after the group-encoding memory fix (`ffde2e1`; a narrow
+frame in `add_group_encodings_oof`, output verified identical, peak memory
+down ~1.8 GB). CatBoost was added as engine `cat` (`_fit_cat`).
+- **Speed:** `max_ctr_complexity=1` (no categorical feature combinations)
+  made it about 12x faster on a T4: 5-6 minutes per fit instead of 70.
+- **Accuracy:** with lr 0.05 it also scored better on the inner validation
+  (flip 493 vs 503).
+- Both changes were recorded as dated amendments before any holdout result
+  (`reports/stack_preregistration.md`).
+- `run(ev_out=...)` now saves the holdout predictions before the long refit,
+  and `PRC_MEMLOG=1` prints memory checkpoints.
+
+**Holdout.** CatBoost alone scored 336.7 (LightGBM 335.6): better at six
+airports, worse at LIRF. The cross-fit NNLS stack gives pooled 333.08
+(-2.55, P(worse)=0.021): Jul -3.65, Jan -1.33 (Jan alone not significant).
+Every airport improves. It was adopted under the pre-registered rule.
+Weights on the full holdout: lgb 0.544, cat 0.468. The ADS-B blend, refit on
+the stacked prediction, still adds -2.09 (Jul) and -4.27 (Jan); stack +
+ADS-B against LightGBM alone is 335.63 -> 329.97.
+
+**Drift check (`tests/adsb_drift_test.py`, label-free, against
+AOBT_3_flt).**
+- The spread of ADS-B timing and the tier mix are stable 2025 -> 2026.
+- The AOBT_3 yardstick itself swings +-40-80 s month to month even where the
+  truth-based lag is stable (EDDM appear: +63 vs -17 against AOBT_3, +42
+  vs +44 against truth). So most year-over-year shifts are within its noise.
+- The exception is EGLL: all four cells shift by -39 to -80 s. That's a
+  possible receiver change; it's left uncorrected, because a correction
+  can't be validated.
+- Coverage rises a lot in 2026 (EGLL Jul 1% -> 75%, EDDM Jul 26% -> 74%).
+
+**Submissions (`src/post/stack_submit.py`; blend logic in
+`src/post/adsb_blend.py`, verified to reproduce the test exactly).**
+- v15 = stack alone: **296**.
+- v16 = stack + ADS-B: **277**. The blend changes 94,529 of 344,841
+  ranking rows (27.4%); LIRF is excluded, EGLL and LEMD are as fitted.
+- The ADS-B gain on the leaderboard (-19) is about 3x the coverage-scaled
+  projection (-6). That's not yet understood: 2026 errors may concentrate
+  where coverage grew, or the leaderboard may score a subset with a
+  different mix.
+
+**Next.** ADS-B is the strongest lever by far, so extending its coverage
+comes first:
+1. Partial-track floor for matched departures with no stand fix (LFPG,
+   LEMD, and missed rows elsewhere).
+2. The LIRF echo mixture (new pre-registration).
+3. EGLL re-check.
+
+The top team is at ~240.

@@ -7,3 +7,7 @@ OVERALL RMSE 335.6 s  (n=344,339)
   2025-01:354  2025-07:320
   False:1904  True:240
   False:315  True:1415
+wrote lgb_mixed.parquet  n=344,841  median=959.0
+wrote reports\eval\lgb_mixed.md
+total 7230s
+holdout preds identical to cached: True  max abs diff 0.0
