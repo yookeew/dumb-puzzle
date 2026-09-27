@@ -3226,3 +3226,35 @@ at LEMD, whose intercept comes from only ~120 holdout rows.
 
 **Submission v17 candidate:** `stack_lgb_cat_adsb_partial.parquet`
 (`src/post/adsb_partial.py`, verified to reproduce the test exactly).
+
+## 42. v17 = 275; LIRF echo mixture REJECTED; EGLL drift probe built
+    (2026-09-27)
+
+**Leaderboard:** v17 (stack + ADS-B + partial tracks) **275** (v16 277). The
+holdout gain was -0.45, so the leaderboard gain is ~4x, consistent with the
+ranking set having more partial-eligible rows.
+
+**LIRF echo-aware ADS-B mixture** (pre-registered,
+`reports/lirf_mixture_preregistration.md`; `tests/lirf_mixture_test.py`).
+- Nudges only each engine's non-echo component `m_i` towards ADS-B,
+  weighted by `(1 - echo_prob)`.
+- Jan 2025 has no LIRF ADS-B coverage, so it was evaluated by a within-July
+  day split.
+- **Result: nil.** Pooled July -0.04 (P(worse)=0.338); dropping the best 3
+  days gives +0.05. Rejected.
+- Non-echo rows improve (706 -> 688), but echo rows worsen (876 -> 953):
+  the classifier can't find them (recall ~9%).
+- On the low-echo majority the model already beats ADS-B (395 vs 538). So
+  LIRF's error is about the *label* (real block time vs schedule echo), not
+  pushback timing. ADS-B can't fix that, and the only remaining LIRF lever
+  would be better echo identification.
+
+**EGLL drift probe (leaderboard A/B).** The label-free drift check (§40)
+showed ADS-B minus AOBT_3 moving by -39 to -80 s (mean -59) at EGLL from
+2025 to 2026, in all four cells. This can't be validated offline, so it's
+tested on the leaderboard directly.
+- `src/post/stack_submit.py --lag-shift EGLL=59` rebuilds v17 with the
+  EGLL lag moved -169 -> -110 s for 2026 rows only
+  (`stack_lgb_cat_adsb_partial_lagshift.parquet`).
+- It differs from v17 only on the 19,547 EGLL blended rows (-31 s mean).
+- Submitted as v18. Score pending.

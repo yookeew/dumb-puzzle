@@ -55,3 +55,25 @@ from the full holdout. It applies to Jan 2026 LIRF rows with appear/dwell
 ## Amendments
 
 (none)
+
+## Results (2026-09-27, `tests/lirf_mixture_test.py`, log `logs/lirf_mixture_test.log`)
+
+**REJECT.** The decomposition check was exact for both engines (max error
+0.000000). Fits: odd days lag −173 s, w 0.276; even days lag −183 s,
+w 0.146.
+
+| | base | new | delta | P(worse) |
+|---|---|---|---|---|
+| even days (fit odd) | 320.77 | 320.77 | −0.00 | 0.455 |
+| odd days (fit even) | 306.49 | 306.42 | −0.07 | 0.188 |
+| pooled July | 313.49 | 313.46 | −0.04 | 0.338 |
+| minus best 3 days | 310.41 | 310.46 | +0.05 | 0.623 |
+
+Why it fails:
+- Non-echo LIRF rows improve (706 → 688 s), but echo rows get worse
+  (876 → 953 s). The classifier can't separate them (recall ~9%).
+- By echo-probability band, the model already beats raw ADS-B on the
+  low-echo majority (< 0.1: model 395 s vs ADS-B 538 s). ADS-B helps only
+  where the model was already bad (0.1–0.5: 806 vs 761 s).
+- LIRF's error is a *labelling* problem (real block time vs schedule echo),
+  not a pushback-timing problem.

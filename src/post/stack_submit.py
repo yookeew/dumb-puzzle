@@ -14,7 +14,11 @@ They are applied to each engine's all-2025 refit submission
 ADS-B part, to 2026 ranking rows with a recovered pushback
 (cache/adsb_pushback/day=2026-*.parquet).
 
-Run:  .venv/Scripts/python.exe src/post/stack_submit.py
+Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...]
+
+--lag-shift adds SECONDS to that airport's ADS-B lag for the 2026 ranking rows
+only (a leaderboard probe of the year-over-year drift, tests/adsb_drift_test.py);
+the files then get a "_lagshift" suffix and the unshifted files are not written.
 """
 
 from __future__ import annotations
@@ -85,7 +89,20 @@ def _write(ids_preds: pl.DataFrame, name: str) -> None:
           f"max={s.max()}")
 
 
+def _lag_shifts() -> dict[str, float]:
+    out = {}
+    if "--lag-shift" in sys.argv:
+        for a in sys.argv[sys.argv.index("--lag-shift") + 1:]:
+            if a.startswith("--"):
+                break
+            k, v = a.split("=")
+            out[k] = float(v)
+    return out
+
+
 def main() -> None:
+    shifts = _lag_shifts()
+    sfx = "_lagshift" if shifts else ""
     # ---- stack weights from the full holdout
     ho = _ev(ENGINES[0])
     for e in ENGINES[1:]:
@@ -120,7 +137,11 @@ def main() -> None:
     assert rk["ADEP_mvt"].null_count() == 0, "submission ids missing from ranking.parquet"
     rk = rk.with_columns(pred=pl.Series(rk.select(ENGINES).to_numpy() @ w))
     rk = rk.with_columns(final=_clip(rk, "pred"))
-    _write(rk, "stack_lgb_cat")
+    if not shifts:
+        _write(rk, "stack_lgb_cat")
+    if shifts:  # 2026-only lag adjustment; holdout-fitted p is otherwise unchanged
+        p = {**p, "lags": {a: v + shifts.get(a, 0.0) for a, v in p["lags"].items()}}
+        print("2026 lag shifts applied:", shifts, "-> lags", {a: round(v) for a, v in sorted(p["lags"].items())})
 
     # ---- ranking: + ADS-B blend
     rk = (rk.join(_det("2026"), on="MVT_ID_mvt", how="left")
@@ -134,7 +155,7 @@ def main() -> None:
         print(changed.group_by("ADEP_mvt").agg(
             pl.len().alias("n"), (pl.col("final") - pl.col("pred")).mean().alias("mean_shift_s"),
             (pl.col("final") - pl.col("pred")).abs().mean().alias("mean_abs_shift_s")).sort("ADEP_mvt"))
-    _write(rk, "stack_lgb_cat_adsb")
+    _write(rk, f"stack_lgb_cat_adsb{sfx}")
 
     # ---- ranking: + ADS-B partial-track estimate
     rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blend")))
@@ -144,7 +165,7 @@ def main() -> None:
     print(f"partial-track rows: {pm.height:,} ({pm.height / rk.height * 100:.1f}%); mean shift "
           f"{(pm['partial'] - pm['base']).mean():+.1f}s; per airport "
           f"{dict(pm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
-    _write(rk, "stack_lgb_cat_adsb_partial")
+    _write(rk, f"stack_lgb_cat_adsb_partial{sfx}")
 
 
 if __name__ == "__main__":
