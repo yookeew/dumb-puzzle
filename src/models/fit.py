@@ -230,6 +230,18 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb, "cat": _fit_cat}
 
 
+def _mem(stage: str) -> None:
+    """RSS checkpoint, printed only when PRC_MEMLOG=1 (diagnosing Colab's ~12.7 GB cap)."""
+    if not os.environ.get("PRC_MEMLOG"):
+        return
+    try:
+        import psutil
+        rss = psutil.Process().memory_info().rss / 1e9
+    except ImportError:
+        rss = float("nan")
+    print(f"[mem] {rss:5.2f} GB  {stage}", flush=True)
+
+
 def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
                        echo_prob: np.ndarray, use_prior: np.ndarray,
                        prior_taxi: np.ndarray, ceil=CEIL) -> np.ndarray:
@@ -514,6 +526,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     feats_ho = pl.read_parquet(feat_dir / "holdout_gap2025.parquet")
     lab = pl.read_parquet(feat_dir / "labels2025.parquet")
     off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
+    _mem("read feature frames")
 
     # the group encoders key on operator, which lives only in the feature frame
     lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
@@ -537,8 +550,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     # training rows, full training-split fit for the holdout.
     f_tr = add_group_encodings_oof(f_tr, tr_lab)
     f_ho = apply_group_encodings(f_ho, fit_group_encodings(tr_lab))
+    _mem("priors + group encodings (f_tr, f_ho)")
 
     Xtr, names, cats, categories = _matrix(f_tr)
+    _mem("Xtr pandas matrix")
     d_tr = tr_lab["d"].to_numpy()
     taxi_tr = tr_lab["taxi"].to_numpy()
     ym_tr = tr_lab["ym"].to_numpy()
@@ -550,11 +565,13 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     fits = {}
     for t in targets_to_fit:
         y_tr = d_tr if t == "flip" else taxi_tr
+        _mem(f"before holdout fit ({t})")
         m, pf, bi = fitter(
             Xtr[tr_mask], y_tr[tr_mask], cats,
             eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], y_tr[va_mask]),
             objective=objective, alpha=alpha, seed=seed)
         print(f"holdout fit {time.time() - t0:.0f}s  best_iter={bi}  loss={loss}  target={t}")
+        _mem(f"after holdout fit ({t})")
         fits[t] = (m, pf, bi)
 
     # Echo classifier: same X matrix as the d-regressor, NOT filtered by `keep`
@@ -565,6 +582,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         engine, Xtr, d_tr, clf_tr_mask, clf_va_mask, cats)
     print(f"echo clf fit {time.time() - t0:.0f}s  best_iter={clf_best}  "
           f"base_rate={is_echo_tr[valid_d].mean():.3f}")
+    _mem("after echo clf")
 
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
@@ -641,6 +659,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     f_all = add_group_encodings_oof(f_all, lab_a)
     genc_a = fit_group_encodings(lab_a)
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
+    _mem("refit: Xall matrix")
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
     d_all_lab = lab_a["d"].to_numpy()
     taxi_all_lab = lab_a["taxi"].to_numpy()
@@ -652,6 +671,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
                              eta=eta, rounds=full_rounds, es=0, valid=None,
                              objective=objective, alpha=alpha, seed=seed)
         fits_a[t] = (m_a, p_a)
+        _mem(f"refit: after fit ({t})")
 
     # echo classifier, refit on all 2025 labelled rows (not filtered by `keep`
     # -- see fit_echo_classifier). No early stopping, same convention as model_a.

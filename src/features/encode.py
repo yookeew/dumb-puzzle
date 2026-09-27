@@ -184,8 +184,13 @@ def add_group_encodings_oof(f_train: pl.DataFrame, lab: pl.DataFrame) -> pl.Data
 
     `lab` needs MVT_ID_mvt plus the columns `_enc_prep` requires and `_ENC_FOLD`.
     """
+    # Work on a narrow frame (id + group keys) and join only the six encoding
+    # columns back at the end: carrying the full ~70-column training frame
+    # through the per-month filter/join/concat below held 4-5 full copies at
+    # once (+4.4 GB peak on the 2.1M-row frame), enough to OOM Colab's 12.7 GB.
+    key_cols = sorted({k for keys in GROUP_ENC_KEYS.values() for k in keys})
     fold = lab.select("MVT_ID_mvt", _ENC_FOLD)
-    keyed = f_train.join(fold, on="MVT_ID_mvt", how="left")
+    keyed = f_train.select("MVT_ID_mvt", *key_cols).join(fold, on="MVT_ID_mvt", how="left")
     p = _enc_prep(lab)
     parts = []
     for fo in p.select(_ENC_FOLD).unique().to_series().to_list():
@@ -200,7 +205,8 @@ def add_group_encodings_oof(f_train: pl.DataFrame, lab: pl.DataFrame) -> pl.Data
             [covered, apply_group_encodings(missing.drop(_ENC_FOLD), fit_group_encodings(lab))],
             how="vertical_relaxed",
         )
-    return f_train.select("MVT_ID_mvt").join(covered, on="MVT_ID_mvt", how="left")
+    return f_train.join(covered.select("MVT_ID_mvt", *GROUP_ENC_COLS),
+                        on="MVT_ID_mvt", how="left")
 
 
 def feature_matrix(

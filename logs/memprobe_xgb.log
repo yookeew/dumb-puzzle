@@ -1,0 +1,16 @@
+[mem]  1.57 GB  read feature frames
+      peak so far  1.27 GB
+[mem]  4.20 GB  priors + group encodings (f_tr, f_ho)
+      peak so far  4.20 GB
+[mem]  5.39 GB  Xtr pandas matrix
+      peak so far  5.41 GB
+[mem]  5.51 GB  before holdout fit (flip)
+      peak so far  5.50 GB
+holdout fit 37s  best_iter=30  loss=huber  target=flip
+[mem]  4.82 GB  after holdout fit (flip)
+      peak so far  8.27 GB
+[mem]  4.82 GB  before holdout fit (direct)
+      peak so far  8.27 GB
+holdout fit 71s  best_iter=30  loss=huber  target=direct
+[mem]  4.82 GB  after holdout fit (direct)
+      peak so far  8.27 GB
