@@ -1,0 +1,70 @@
+C:\Users\yuqiw\prc2025\tests\queue_test.py:60: UserWarning: Extension type 'arrow.r.vctrs' is not registered; loading as its storage type.
+
+To avoid this warning, register the extension type or set environment variable 'POLARS_UNKNOWN_EXTENSION_TYPE_BEHAVIOR' to 'load_as_storage' or 'load_as_extension'.
+
+In Polars 2.0, the default behavior will change to 'load_as_extension'.
+  frame = pl.read_parquet(TRAIN_GLOB, columns=FRAME_COLS)
+C:\Users\yuqiw\prc2025\src\link\stand_link.py:100: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.join_asof(
+C:\Users\yuqiw\prc2025\src\link\stand_link.py:112: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.sort("est_offblock").join_asof(
+C:\Users\yuqiw\prc2025\src\link\stand_link.py:124: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.sort("est_offblock").join_asof(
+=== baseline (production cache, queue off), target=mixed ===
+holdout fit 656s  best_iter=7997  loss=huber  target=flip
+holdout fit 939s  best_iter=3169  loss=huber  target=direct
+echo clf fit 1005s  best_iter=430  base_rate=0.055
+echo clf holdout  precision=0.699  recall=0.096  n_true_echo=17349  n_pred_echo=2372
+OVERALL RMSE 335.9 s  (n=344,339)
+  EDDF:191  EDDM:187  EGLL:289  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:655  LSZH:209  LTFM:268
+  2025-01:354  2025-07:321
+  False:1907  True:240
+  False:320  True:1269
+wrote reports\eval\queue_baseline_mixed.md
+total 1235s (holdout-only, no submission)
+
+=== treatment (+ realised queue family, rebuilt from raw) ===
+holdout fit 675s  best_iter=7994  loss=huber  target=flip
+holdout fit 1085s  best_iter=3590  loss=huber  target=direct
+echo clf fit 1144s  best_iter=368  base_rate=0.055
+echo clf holdout  precision=0.693  recall=0.096  n_true_echo=17349  n_pred_echo=2391
+OVERALL RMSE 336.1 s  (n=344,339)
+  EDDF:191  EDDM:187  EGLL:286  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:658  LSZH:209  LTFM:268
+  2025-01:354  2025-07:321
+  False:1913  True:239
+  False:320  True:1263
+wrote reports\eval\queue_treatment_mixed.md
+total 1394s (holdout-only, no submission)
+
+overall RMSE   baseline=335.9  treatment=336.1  delta=+0.2
+  2025-01: baseline=353.9  treatment=354.0  delta=+0.1
+  2025-07: baseline=320.7  treatment=321.0  delta=+0.3
+
+per airport:
+  EDDF   base=  190.9  treat=  190.8  delta=   -0.1  n=36,830
+  EDDM   base=  186.7  treat=  187.0  delta=   +0.3  n=27,091
+  EGLL   base=  288.6  treat=  286.3  delta=   -2.3  n=40,210
+  EHAM   base=  199.8  treat=  199.6  delta=   -0.1  n=40,949
+  LEBL   base=  224.0  treat=  224.2  delta=   +0.1  n=28,985
+  LEMD   base=  180.1  treat=  179.9  delta=   -0.1  n=35,328
+  LFPG   base=  579.2  treat=  578.8  delta=   -0.3  n=39,590
+  LIRF   base=  655.1  treat=  658.4  delta=   +3.2  n=26,528
+  LSZH   base=  209.3  treat=  209.1  delta=   -0.2  n=22,289
+  LTFM   base=  268.2  treat=  268.1  delta=   -0.1  n=46,539
+
+by offset band (S22 says 57% of MSE is in the first two):
+  [0, 1,800)           base=   243.0 treat=   242.8 delta=    -0.2  n=203,854
+  [1,800, 3,600)       base=   329.3 treat=   328.6 delta=    -0.7  n=95,339
+  [3,600, 7,200)       base=   460.7 treat=   460.1 delta=    -0.6  n=33,357
+  [7,200, 14,400)      base=   822.2 treat=   826.5 delta=    +4.3  n=7,718
+  >= 14,400            base=  1702.8 treat=  1716.4 delta=   +13.7  n=1,383
+
+by queue depth (does it help most where the queue is long?):
+  q_ahead [ 0,  5) base=   227.4 treat=   227.5 delta=    +0.0  n=61,762
+  q_ahead [ 5, 10) base=   241.7 treat=   241.6 delta=    -0.1  n=121,700
+  q_ahead [10, 15) base=   229.6 treat=   228.7 delta=    -0.9  n=92,618
+  q_ahead [15,100) base=   262.0 treat=   260.9 delta=    -1.1  n=62,936
+
+cluster bootstrap (airport, day), 3000 resamples, 620 clusters:
+  paired RMSE delta (treatment - baseline): +0.17s
+  95% CI: [-0.32, +0.64]    P(worse) = 0.758

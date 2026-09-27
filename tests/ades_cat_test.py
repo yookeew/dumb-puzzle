@@ -7,11 +7,11 @@ sets the SID/departure route, hence runway exit and holding point, so there
 is a physical story -- but unlike family 5 this one can't be bounded away in
 advance, so it gets a real test.
 
-The ATFM family (5) is dropped from BOTH arms, since S20 did not adopt it.
-This isolates ADES_mvt exactly:
-
-  baseline  = production feature set (no atfm, no ADES_mvt)
-  treatment = production feature set + ADES_mvt
+  baseline  = production feature set (FEAT_DIR as-is: weather on, atfm off)
+  treatment = production feature set + ADES_mvt, added by joining the raw
+              column onto a freshly rebuilt feature frame and temporarily
+              registering it in encode.CAT_COLS for this run only (restored
+              after, production encode.py is never touched on disk).
 
 Same discipline as tests/atfm_v1_test.py: paired per-row squared errors on
 identical holdout rows, (airport, day) cluster bootstrap, both months
@@ -30,6 +30,9 @@ from pathlib import Path
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import features.encode as encode  # noqa: E402
+from features.build_features import build_features  # noqa: E402
+from features.export_model_inputs import FRAME_COLS, HOLDOUT_MONTHS as _HO, TRAIN_GLOB, blind  # noqa: E402
 from models.fit import HOLDOUT_MONTHS, run  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -37,41 +40,55 @@ from _harness import DEFAULT_TARGET, cluster_bootstrap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FEAT_DIR = ROOT / "cache" / "features"
-BASE_DIR = ROOT / "cache" / "features_ades_base_tmp"
 TREAT_DIR = ROOT / "cache" / "features_ades_treat_tmp"
-
-ATFM_CTX = ["reg_share", "in_slot_share", "late_share", "dly_min_per_flight",
-            "dly_weather_share", "dly_staffing_share", "traffic_dep",
-            "traffic_arr", "traffic_tot"]
-ATFM_COLS = ["ades_in_panel"] + [f"dep_atfm_{c}" for c in ATFM_CTX] + \
-    [f"des_atfm_{c}" for c in ATFM_CTX]
 
 N_RESAMPLES = 3000
 MODEL_SEED = 42
 BOOT_SEED = 0
 
 
-def _prep(dest: Path, drop: list[str]) -> None:
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    for f in ("train2025.parquet", "holdout_gap2025.parquet"):
-        df = pl.read_parquet(FEAT_DIR / f)
-        df.drop([c for c in drop if c in df.columns]).write_parquet(dest / f)
-    shutil.copy(FEAT_DIR / "labels2025.parquet", dest / "labels2025.parquet")
+def _make_treat_dir() -> None:
+    """Rebuild train2025/holdout_gap2025 with the current production flags
+    (weather=True as of S24/S25, atfm=False) plus a raw ADES_mvt passthrough
+    column joined on afterward -- build_features() itself never selects
+    ADES_mvt (S21 removed it), so it has to be added here, not toggled."""
+    if TREAT_DIR.exists():
+        shutil.rmtree(TREAT_DIR)
+    TREAT_DIR.mkdir(parents=True)
+
+    frame = pl.read_parquet(TRAIN_GLOB, columns=FRAME_COLS)
+    ades = frame.filter(pl.col("PHASE_mvt") == "DEP").select("MVT_ID_mvt", "ADES_mvt")
+
+    build_features(blind(frame), priors=None, weather=True) \
+        .join(ades, on="MVT_ID_mvt", how="left") \
+        .write_parquet(TREAT_DIR / "train2025.parquet")
+
+    frame_ho = frame.filter(
+        pl.col("MVT_TIME_UTC_mvt").dt.strftime("%Y-%m").is_in(_HO)
+    )
+    ades_ho = frame_ho.filter(pl.col("PHASE_mvt") == "DEP").select("MVT_ID_mvt", "ADES_mvt")
+    build_features(blind(frame_ho), priors=None, weather=True) \
+        .join(ades_ho, on="MVT_ID_mvt", how="left") \
+        .write_parquet(TREAT_DIR / "holdout_gap2025.parquet")
+
+    shutil.copy(FEAT_DIR / "labels2025.parquet", TREAT_DIR / "labels2025.parquet")
 
 
 def main(target: str = DEFAULT_TARGET) -> None:
     suffix = f"_{target}" if target != "direct" else ""
-    print(f"=== baseline (no atfm, no ADES_mvt), target={target} ===")
-    _prep(BASE_DIR, ATFM_COLS + ["ADES_mvt"])
-    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name=f"ades_cat_baseline{suffix}",
+    print(f"=== baseline (production cache, no ADES_mvt), target={target} ===")
+    _, ev_base = run(engine="lgb", feat_dir=FEAT_DIR, name=f"ades_cat_baseline{suffix}",
                      target=target, submit=False, seed=MODEL_SEED)
 
     print("\n=== treatment (+ ADES_mvt categorical) ===")
-    _prep(TREAT_DIR, ATFM_COLS)
-    _, ev_treat = run(engine="lgb", feat_dir=TREAT_DIR, name=f"ades_cat_treatment{suffix}",
-                      target=target, submit=False, seed=MODEL_SEED)
+    _make_treat_dir()
+    original_cat_cols = list(encode.CAT_COLS)
+    encode.CAT_COLS.append("ADES_mvt")
+    try:
+        _, ev_treat = run(engine="lgb", feat_dir=TREAT_DIR, name=f"ades_cat_treatment{suffix}",
+                          target=target, submit=False, seed=MODEL_SEED)
+    finally:
+        encode.CAT_COLS[:] = original_cat_cols
 
     ev = (
         ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", pred_base="pred")

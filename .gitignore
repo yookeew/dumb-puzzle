@@ -25,3 +25,9 @@ external-data/metar/*.csv
 # OS
 .DS_Store
 Thumbs.db
+
+# Normalised ADS-B day store (rebuildable via src/ingest/normalise_adsb.py
+# from the raw extracts in external-data/adsb/, which are also not committed)
+data/external/adsb/
+external-data/adsb/
+external-data/adsb-fetch/

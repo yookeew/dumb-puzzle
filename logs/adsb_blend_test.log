@@ -1,0 +1,81 @@
+==============================================================================
+0. Data check: old box vs new box detector outputs (4 overlap days)
+==============================================================================
+  2025-01-15: old 823  new 823  both 823  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+  2025-07-15: old 853  new 853  both 853  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+  2025-09-15: old 1,530  new 1,530  both 1,530  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+  2025-11-15: old 1,447  new 1,447  both 1,447  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+  2026-01-15: old 1,249  new 1,249  both 1,249  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+  2026-07-15: old 1,841  new 1,841  both 1,841  old-only 0  new-only 0  |dpushback|=0 on 100.0%  >60s on 0 rows  tier changed 0
+
+holdout rows 344,339; eligible (appear+dwell) 60,093; eligible excl LIRF 58,883
+shape: (2, 11)
+| ym      | LEMD | EDDM | LSZH | ... | LIRF | LEBL | EHAM | LFPG |
+| ---     | ---  | ---  | ---  |     | ---  | ---  | ---  | ---  |
+| str     | f64  | f64  | f64  |     | f64  | f64  | f64  | f64  |
+|---------|------|------|------|-----|------|------|------|------|
+| 2025-01 | 0.0  | 77.7 | 24.3 | ... | 0.0  | 29.1 | 57.0 | 0.0  |
+| 2025-07 | 0.6  | 26.2 | 16.2 | ... | 8.0  | 30.8 | 73.9 | 0.0  |
+
+==============================================================================
+1. PRIMARY: lag per airport + tier weights, LIRF excluded, month cross-fit
+==============================================================================
+  A (fit Jan): w={'appear': 0.696, 'dwell': 0.494}  lag(adsb-taxi, s)=[EDDF:-29, EDDM:-48, EGLL:-170, EHAM:-11, LEBL:-34, LSZH:-27]  pooled=-40
+  B (fit Jul): w={'appear': 0.628, 'dwell': 0.35}  lag(adsb-taxi, s)=[EDDF:-34, EDDM:-52, EGLL:-169, EHAM:-35, LEBL:-39, LEMD:-136, LFPG:-39, LSZH:-28]  pooled=-39
+  A  Jul 2025 (fit Jan)              model= 319.76  blend= 317.71  delta= -2.05  CI[-2.79,-1.35]  P(worse)=0.000  n=190,679
+  B  Jan 2025 (fit Jul)              model= 354.34  blend= 350.12  delta= -4.22  CI[-7.40,-2.52]  P(worse)=0.000  n=153,660
+  POOLED                             model= 335.63  blend= 332.56  delta= -3.07  CI[-4.28,-2.22]  P(worse)=0.000  n=344,339
+  standing rule (both months < 0 and pooled P(worse) < 0.05): ADOPT
+
+  per airport:
+shape: (10, 6)
+| ADEP_mvt | n     | n_elig | model  | blend  | delta  |
+| ---      | ---   | ---    | ---    | ---    | ---    |
+| str      | u32   | u32    | f64    | f64    | f64    |
+|----------|-------|--------|--------|--------|--------|
+| EDDF     | 36830 | 4570   | 190.88 | 187.25 | -3.63  |
+| EDDM     | 27091 | 12888  | 186.52 | 160.87 | -25.65 |
+| EGLL     | 40210 | 1044   | 288.61 | 287.71 | -0.90  |
+| EHAM     | 40949 | 27147  | 199.84 | 184.22 | -15.62 |
+| LEBL     | 28985 | 8720   | 224.11 | 215.21 | -8.90  |
+| LEMD     | 35328 | 114    | 179.93 | 179.94 | 0.00   |
+| LFPG     | 39590 | 6      | 579.47 | 579.47 | -0.00  |
+| LIRF     | 26528 | 1210   | 652.65 | 652.65 | 0.00   |
+| LSZH     | 22289 | 4394   | 209.53 | 205.81 | -3.72  |
+| LTFM     | 46539 | 0      | 268.25 | 268.25 | 0.00   |
+  per tier (eligible rows only):
+shape: (2, 6)
+| adsb_tier | n     | n_elig | model  | blend  | delta  |
+| ---       | ---   | ---    | ---    | ---    | ---    |
+| str       | u32   | u32    | f64    | f64    | f64    |
+|-----------|-------|--------|--------|--------|--------|
+| appear    | 23210 | 23210  | 176.30 | 121.10 | -55.19 |
+| dwell     | 35673 | 35673  | 184.38 | 157.72 | -26.66 |
+
+==============================================================================
+2. SECONDARY: per-airport-tier weights (cells >= 200)
+==============================================================================
+  A (fit Jan): w={'appear': 0.696, 'dwell': 0.494}  lag(adsb-taxi, s)=[EDDF:-29, EDDM:-48, EGLL:-170, EHAM:-11, LEBL:-34, LSZH:-27]  pooled=-40  cells={'EDDF/appear': 0.75, 'EDDF/dwell': 0.3, 'EDDM/appear': 0.86, 'EDDM/dwell': 0.57, 'EGLL/appear': 0.84, 'EGLL/dwell': 0.28, 'EHAM/appear': 0.6, 'EHAM/dwell': 0.5, 'LEBL/appear': 0.9, 'LEBL/dwell': 0.42, 'LSZH/appear': 0.52, 'LSZH/dwell': 0.47}
+  B (fit Jul): w={'appear': 0.628, 'dwell': 0.35}  lag(adsb-taxi, s)=[EDDF:-34, EDDM:-52, EGLL:-169, EHAM:-35, LEBL:-39, LEMD:-136, LFPG:-39, LSZH:-28]  pooled=-39  cells={'EDDF/appear': 0.7, 'EDDF/dwell': 0.33, 'EDDM/appear': 0.9, 'EDDM/dwell': 0.58, 'EHAM/appear': 0.5, 'EHAM/dwell': 0.27, 'LEBL/appear': 0.77, 'LEBL/dwell': 0.45, 'LSZH/appear': 0.51, 'LSZH/dwell': 0.55}
+  vs primary: Jul 317.71 -> 317.64  Jan 350.12 -> 350.07  => ADOPT over primary
+
+==============================================================================
+3. Winter-only terms (decisive only if Jan gains and Jul shows nothing)
+==============================================================================
+  summer case triggered: False  (B delta -4.22 P(worse) 0.000; A delta -2.05 P(worse) 0.000)
+  W1 Jan odd/even day split          model= 354.34  blend= 350.09  delta= -4.25  CI[-7.50,-2.50]  P(worse)=0.000  n=153,660
+  W2 Jan minus best 3 days ['2025-01-05', '2025-01-15', '2025-01-18'] model= 361.49  blend= 358.50  delta= -2.99  CI[-5.16,-1.94]  P(worse)=0.000  n=139,194
+  W1 PASS   W2 PASS   W3 (Jan-2026-only application) is a deployment rule, not a test
+
+==============================================================================
+4. LIRF diagnosis (H_echo) and variant L
+==============================================================================
+  LIRF is_echo=False: n=1,058  ADS-B RMSE=529s  median(adsb-taxi)=-175s  share of LIRF ADS-B SSE=17%  model RMSE=751s
+  LIRF is_echo=True: n=152  ADS-B RMSE=3118s  median(adsb-taxi)=-360s  share of LIRF ADS-B SSE=83%  model RMSE=874s
+  pooled non-LIRF ADS-B RMSE 201s; non-echo LIRF 529s (<= 301? False); echo share 83% (> 50%? True)  => H_echo FAILS
+
+==============================================================================
+5. EDDM, with its 3 worst model-error days split out
+==============================================================================
+  EDDM worst-3 days 2025-01-15,2025-07-29,2025-01-05: n=1,206 elig=904  model=385.5  blend=300.6
+  EDDM other days: n=25,885 elig=11,984  model=171.7  blend=151.2

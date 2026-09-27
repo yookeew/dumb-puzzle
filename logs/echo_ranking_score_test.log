@@ -1,0 +1,42 @@
+C:\Users\yuqiw\prc2025\tests\echo_ranking_score_test.py:120: UserWarning: Extension type 'arrow.r.vctrs' is not registered; loading as its storage type.
+
+To avoid this warning, register the extension type or set environment variable 'POLARS_UNKNOWN_EXTENSION_TYPE_BEHAVIOR' to 'load_as_storage' or 'load_as_extension'.
+
+In Polars 2.0, the default behavior will change to 'load_as_extension'.
+  "AOBT_3_flt", *FLT_NULL_COLS).collect()
+loading all-2025 features + labels
+holdout classifier fit 184s  best_iter=402
+all-2025 classifier refit done 253s  rounds=442
+ranking scored 259s  n=344,841
+saved cache/ranking_echo_prob.parquet
+
+==============================================================================
+Real echo_prob count on ranking (null lane, n=5,290)
+==============================================================================
+  echo_prob_r distribution in the null lane:
+    median=0.001  p10=0.000  p90=0.114
+    echo_prob_r > 0.3: n=273 (5.2% of null lane, 0.079% of all ranking DEP)
+    echo_prob_r > 0.5: n=178 (3.4% of null lane, 0.052% of all ranking DEP)
+    echo_prob_r > 0.7: n=70 (1.3% of null lane, 0.020% of all ranking DEP)
+
+  by airport (echo_prob_r > 0.5 & null lane):
+shape: (2, 2)
+┌──────────┬─────┐
+│ ADEP_mvt ┆ n   │
+│ ---      ┆ --- │
+│ str      ┆ u32 │
+╞══════════╪═════╡
+│ LIRF     ┆ 177 │
+│ EHAM     ┆ 1   │
+└──────────┴─────┘
+
+  cross-tab: echo_prob_r > 0.5 & offset > 3600s (excludes offset>30000 extreme-scale rows, kept separate):
+    n=142 (0.041% of all ranking DEP)
+shape: (1, 2)
+┌──────────┬─────┐
+│ ADEP_mvt ┆ n   │
+│ ---      ┆ --- │
+│ str      ┆ u32 │
+╞══════════╪═════╡
+│ LIRF     ┆ 142 │
+└──────────┴─────┘

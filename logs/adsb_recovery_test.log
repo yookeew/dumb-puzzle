@@ -1,0 +1,35 @@
+loading ADS-B probe: adsb_20250115.parquet
+loading true DEP movements for 2025-01-15 at covered airports
+
+==============================================================================
+Per-airport recovery (2025-01-15 true DEP movements)
+==============================================================================
+airport    n_dep  n_adsb_cand  n_matched  censored  n_usable  recovery%
+EHAM         512          522        485       342       143      27.9%
+EGLL         632          536        465       400        65      10.3%
+EDDM         361          364        358        80       278      77.0%
+EDDF         513          509        448       398        50       9.7%
+LSZH         292          293        265       163       102      34.9%
+LEBL         319          338        312       280        32      10.0%
+
+TOTAL: n_dep=2629  n_usable=670  recovery=25.5%
+
+==============================================================================
+Accuracy: adsb_pushback_ts - true BLOCK_TIME_UTC_mvt (n=670)
+==============================================================================
+  median = 7.84 min
+  p10    = -0.22 min
+  p90    = 31.84 min
+  |d|<=60s   : 18.2%
+  |d|<=300s  : 31.8%
+  rmse   = 2179.6 s
+
+  per airport:
+    EHAM   n= 143  median=  2.60min  |d|<=60s= 25.9%  |d|<=300s= 58.7%  rmse= 1966.9s
+    EGLL   n=  65  median= 13.88min  |d|<=60s=  0.0%  |d|<=300s=  1.5%  rmse= 4931.0s
+    EDDM   n= 278  median= 21.88min  |d|<=60s= 12.2%  |d|<=300s= 17.6%  rmse= 1650.1s
+    EDDF   n=  50  median=  7.12min  |d|<=60s=  0.0%  |d|<=300s= 24.0%  rmse= 2193.6s
+    LSZH   n= 102  median=  5.43min  |d|<=60s= 37.3%  |d|<=300s= 46.1%  rmse=  673.1s
+    LEBL   n=  32  median=  2.70min  |d|<=60s= 40.6%  |d|<=300s= 62.5%  rmse=  413.9s
+
+For comparison, reports/step0_audit.md SS4 (AOBT_3_flt vs true BLOCK_TIME_UTC_mvt, full year, all 10 airports): median=-0.8min, |d|<=60s=21.0%, |d|<=300s=74.6%.

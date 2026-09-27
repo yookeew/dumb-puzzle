@@ -21,12 +21,29 @@ discipline as tests/atfm_v1_test.py (PROGRESS.md S14/S16/S19/S20):
                     measuring weather, the same logic that rejected the
                     queue feature (S23, no gain gradient with queue depth).
 
-Baseline vs treatment is built by adding the 16 weather columns onto the
-already-built (weather-less) cache/features/*.parquet directly -- the
-weather join is a pure left-join on (ADEP_mvt, hour bucket of T) that adds
-columns without touching anything else, same efficiency trick atfm_v1_test.py
-used in the opposite direction (there: drop columns from an included cache;
-here: add columns to an excluded cache).
+Baseline vs treatment: whichever side needs work is decided at runtime by
+checking whether FEAT_DIR (the shared production cache) already has weather
+columns baked in.
+
+  weather=True is the production default as of S24/S25 -- FEAT_DIR already
+  has the 16 weather columns, so treatment = FEAT_DIR as-is, and baseline
+  is built by DROPPING them (a pure left-join adds columns without touching
+  anything else, so dropping is exactly equivalent to a weather=False
+  rebuild, same trick atfm_v1_test.py used).
+
+  If FEAT_DIR is ever rebuilt weather=False again (a future regression, or
+  a fresh clone before the family is adopted there), this auto-flips to the
+  opposite direction: baseline = FEAT_DIR as-is, treatment = weather ADDED
+  on top via a fresh join.
+
+This auto-detection exists because the naive fixed-direction version of
+this script crashed (S25): after weather became the production default,
+"baseline (no weather)" was silently reading FEAT_DIR (which already had
+weather), then the treatment build tried to left-join weather AGAIN and
+collided on `flight_category`, producing a stray `_right`-suffixed string
+column LightGBM can't train on. Same root cause as the queue/ADES bugs
+this session found -- a script that assumes a fixed state of the shared
+ambient cache instead of checking it.
 
 Run:  .venv/Scripts/python.exe tests/metar_weather_test.py
 """
@@ -78,15 +95,26 @@ def _add_weather(df: pl.DataFrame, wx: pl.DataFrame) -> pl.DataFrame:
     return d.drop("hour")
 
 
-def _make_wx_dir() -> None:
+def _feat_dir_has_weather() -> bool:
+    cols = pl.read_parquet(FEAT_DIR / "train2025.parquet", n_rows=1).columns
+    return "vis_mi" in cols
+
+
+def _make_wx_dir(drop_mode: bool) -> None:
+    """drop_mode=True: FEAT_DIR already has weather, build BASELINE (drop
+    WX_COLS) into WX_DIR. drop_mode=False: FEAT_DIR lacks weather, build
+    TREATMENT (add weather) into WX_DIR -- the original direction."""
     if WX_DIR.exists():
         shutil.rmtree(WX_DIR)
     WX_DIR.mkdir(parents=True)
-    wx = load_metar_hourly()
+    wx = None if drop_mode else load_metar_hourly()
     for f in ("train2025.parquet", "holdout_gap2025.parquet", "ranking.parquet"):
         print(f"  {f}:")
         df = pl.read_parquet(FEAT_DIR / f)
-        _add_weather(df, wx).write_parquet(WX_DIR / f)
+        if drop_mode:
+            df.drop([c for c in WX_COLS if c in df.columns]).write_parquet(WX_DIR / f)
+        else:
+            _add_weather(df, wx).write_parquet(WX_DIR / f)
     shutil.copy(FEAT_DIR / "labels2025.parquet", WX_DIR / "labels2025.parquet")
 
 
@@ -97,11 +125,11 @@ def _cluster_key(ev: pl.DataFrame) -> pl.DataFrame:
     return ev.join(t, on="MVT_ID_mvt", how="left")
 
 
-def _weather_regime(ev: pl.DataFrame) -> pl.DataFrame:
+def _weather_regime(ev: pl.DataFrame, wx_source_dir: Path) -> pl.DataFrame:
     """Pull the per-row weather regime flags used by the mechanism test,
-    straight from the treatment feature frame (not re-derived) so this
-    matches exactly what the model saw."""
-    wx = pl.read_parquet(WX_DIR / "holdout_gap2025.parquet").select(
+    straight from whichever feature frame actually has them (not re-derived)
+    so this matches exactly what the model saw."""
+    wx = pl.read_parquet(wx_source_dir / "holdout_gap2025.parquet").select(
         "MVT_ID_mvt", "flight_category", "below_freezing", "deicing_risk",
     )
     return ev.join(wx, on="MVT_ID_mvt", how="left")
@@ -110,16 +138,22 @@ def _weather_regime(ev: pl.DataFrame) -> pl.DataFrame:
 def main(target: str = DEFAULT_TARGET, seed: int = MODEL_SEED) -> None:
     suffix = f"_{target}" if target != "direct" else ""
     suffix += f"_seed{seed}" if seed != MODEL_SEED else ""
-    print(f"=== building treatment feature dir (weather columns added), "
-          f"target={target}, seed={seed} ===")
-    _make_wx_dir()
+
+    has_wx = _feat_dir_has_weather()
+    print(f"=== FEAT_DIR already has weather: {has_wx} -- "
+          f"{'dropping for baseline' if has_wx else 'adding for treatment'} "
+          f"({target=}, {seed=}) ===")
+    _make_wx_dir(drop_mode=has_wx)
+    base_dir = WX_DIR if has_wx else FEAT_DIR
+    treat_dir = FEAT_DIR if has_wx else WX_DIR
+    wx_source_dir = FEAT_DIR if has_wx else WX_DIR
 
     print("\n=== baseline (no weather) ===")
-    _, ev_base = run(engine="lgb", feat_dir=FEAT_DIR, name=f"metar_baseline{suffix}",
+    _, ev_base = run(engine="lgb", feat_dir=base_dir, name=f"metar_baseline{suffix}",
                       target=target, submit=False, seed=seed)
 
     print("\n=== treatment (weather family 7 included) ===")
-    _, ev_treat = run(engine="lgb", feat_dir=WX_DIR, name=f"metar_treatment{suffix}",
+    _, ev_treat = run(engine="lgb", feat_dir=treat_dir, name=f"metar_treatment{suffix}",
                        target=target, submit=False, seed=seed)
 
     base = ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", pred_base="pred")
@@ -181,7 +215,7 @@ def main(target: str = DEFAULT_TARGET, seed: int = MODEL_SEED) -> None:
           "tiny population can still lose the share to a tiny per-row effect\n"
           "on the 80-99% majority. Report both; don't call it a clean pass\n"
           "on the per-row delta alone (PROGRESS.md S24/S25).")
-    evr = _weather_regime(ev)
+    evr = _weather_regime(ev, wx_source_dir)
     evr = evr.with_columns(
         low_vis=(pl.col("flight_category") != "VFR").fill_null(False),
     )

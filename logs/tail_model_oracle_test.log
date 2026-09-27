@@ -1,0 +1,28 @@
+loading pooled all-2025 features/labels
+[6s] priors/encodings ready  train n=1,740,628  holdout n=344,419
+[79s] echo classifier fit, best_iter=402
+[723s] baseline (LABEL_HI=7200) fit, best_iter=7996
+[899s] baseline overall RMSE = 342.19s (sanity check vs production)
+
+tail training population: n=435
+tail train/valid split: 348/87
+[899s] tail model fit, best_iter=22
+
+==============================================================================
+Oracle-gated evaluation on the 149 true holdout tail rows (taxi>7200)
+==============================================================================
+  status quo (baseline model + full echo blend): rmse=  10093.2s  (n=149)
+  naive offset-only (predict = sched_takeoff_offset): rmse=   9126.5s  (n=149)
+  tail model, raw (no blend, clipped [0,200000]): rmse=   9086.0s  (n=149)
+
+oracle-gated overall RMSE: 329.76s  (baseline-only: 342.19s, delta=-12.44s, +3.63%)
+
+per-airport breakdown of the true-tail population:
+  EGLL   n= 20  baseline=   4790.6  tail_model=   1484.9
+  EHAM   n=  2  baseline=   8720.5  tail_model=   7942.6
+  LFPG   n=  9  baseline=  34130.2  tail_model=  33176.5
+  LIRF   n=113  baseline=   5876.9  tail_model=   4364.3
+  LSZH   n=  4  baseline=   5894.3  tail_model=   4219.8
+  LTFM   n=  1  baseline=   6514.0  tail_model=    995.1
+
+total wall time: 899s

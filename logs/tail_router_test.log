@@ -1,0 +1,40 @@
+loading pooled all-2025 features/labels
+[4s] priors/encodings ready  train n=1,740,628  holdout n=344,419
+[67s] echo classifier fit, best_iter=402
+[87s] tail classifier fit, best_iter=98  base_rate=0.00025
+tail clf holdout @P>0.5: precision=0.242  recall=0.456  n_true_tail=149  n_pred_tail=281
+[746s] main model fit, best_iter=7996
+[920s] main-model-only (no tail router) overall RMSE = 342.19s
+[921s] tail model fit, best_iter=22 (n_train=348)
+
+==============================================================================
+Honest (non-oracle) router result
+==============================================================================
+  main-model-only:        342.19s
+  main + REAL P(tail) router: 373.08s  (delta=+30.89s, -9.03%)
+  (for reference, tests/tail_model_oracle_test.py's oracle-gated ceiling was -12.44s/+3.63% from 342.19s)
+
+per-airport:
+  EDDF   main=   229.5  +router=   298.4  delta= +68.85  n=36,830
+  EDDM   main=   189.9  +router=   204.7  delta= +14.84  n=27,091
+  EGLL   main=   286.7  +router=   290.2  delta=  +3.53  n=40,210
+  EHAM   main=   228.9  +router=   302.9  delta= +74.08  n=40,949
+  LEBL   main=   230.6  +router=   255.0  delta= +24.36  n=28,986
+  LEMD   main=   185.5  +router=   194.1  delta=  +8.62  n=35,328
+  LFPG   main=   580.3  +router=   587.2  delta=  +7.00  n=39,612
+  LIRF   main=   652.7  +router=   738.4  delta= +85.79  n=26,528
+  LSZH   main=   211.9  +router=   224.1  delta= +12.20  n=22,346
+  LTFM   main=   276.9  +router=   290.1  delta= +13.26  n=46,539
+
+per-month:
+  2025-01: main=  362.20  +router=  382.93  delta= +20.73
+  2025-07: main=  325.18  +router=  364.95  delta= +39.78
+
+==============================================================================
+Cluster bootstrap (airport, day)
+==============================================================================
+paired RMSE delta=+30.89s  95% CI=[+18.95, +46.09]  P(worse)=1.000
+
+false-positive rows (routed but not actually tail, n=213): main=2585.4  +router=6424.6  delta=+3839.2
+
+total wall time: 921s

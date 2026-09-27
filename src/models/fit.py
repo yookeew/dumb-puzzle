@@ -112,8 +112,8 @@ VALID_MONTH = "2025-06"
 CLF_ROUNDS = 5000
 CLF_ETA = 0.02
 CLF_EARLY_STOP = 150
-CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic"}
-CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss"}
+CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic", "cat": "Logloss"}
+CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss", "cat": "Logloss"}
 
 
 # --------------------------------------------------------------------- engines
@@ -181,7 +181,71 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     return m, predict, best
 
 
-ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
+def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
+             objective="RMSE", alpha=None, metric="RMSE"):
+    """CatBoost: the decorrelated second family (ordered boosting, target-statistic
+    encoding of the categoricals instead of LightGBM/XGBoost's partition splits).
+    GPU when available (Colab T4), else CPU -- CPU on the full 2M-row frame is
+    hours, not minutes, so run this on Colab."""
+    from catboost import CatBoostClassifier, CatBoostRegressor, Pool
+    from catboost.utils import get_gpu_device_count
+
+    def pool(A, label=None):
+        A = A.copy()
+        for c in cats:  # pandas category over int codes -> plain ints for CatBoost
+            A[c] = A[c].astype("int32")
+        return Pool(A, label=label, cat_features=cats)
+
+    is_clf = objective == "Logloss"
+    loss = objective if alpha is None or objective != "Huber" else f"Huber:delta={alpha}"
+    # max_ctr_complexity=1: no categorical feature combinations. With 14
+    # categoricals (several with thousands of levels) the default combination
+    # search made each GPU iteration ~0.5 s on the 1.7M-row fit (~70 min/fit).
+    params = dict(loss_function=loss, eval_metric=metric, learning_rate=eta, iterations=rounds,
+                  depth=8, border_count=127, max_ctr_complexity=1, random_seed=seed,
+                  allow_writing_files=False, verbose=500)
+    dtrain = pool(X, y)
+    fit_kw = {}
+    if valid is not None and es:
+        fit_kw = dict(eval_set=pool(valid[0], valid[1]), early_stopping_rounds=es,
+                      use_best_model=True)
+    cls = CatBoostClassifier if is_clf else CatBoostRegressor
+    m = None
+    n_gpu = get_gpu_device_count()
+    print(f"catboost: {'GPU' if n_gpu > 0 else 'CPU (no GPU visible)'}  "
+          f"loss={loss}  lr={eta}  rounds={rounds}", flush=True)
+    if n_gpu > 0:
+        try:
+            m = cls(**params, task_type="GPU")
+            m.fit(dtrain, **fit_kw)
+        except Exception as e:  # a loss/metric without GPU support -> CPU
+            print(f"catboost GPU failed ({e}); falling back to CPU")
+            m = None
+    if m is None:
+        m = cls(**params, task_type="CPU", thread_count=-1)
+        m.fit(dtrain, **fit_kw)
+    best = (m.get_best_iteration() or rounds - 1) + 1
+
+    def predict(M, A):
+        P = pool(A)
+        return M.predict_proba(P)[:, 1] if is_clf else M.predict(P)
+
+    return m, predict, best
+
+
+ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb, "cat": _fit_cat}
+
+
+def _mem(stage: str) -> None:
+    """RSS checkpoint, printed only when PRC_MEMLOG=1 (diagnosing Colab's ~12.7 GB cap)."""
+    if not os.environ.get("PRC_MEMLOG"):
+        return
+    try:
+        import psutil
+        rss = psutil.Process().memory_info().rss / 1e9
+    except ImportError:
+        rss = float("nan")
+    print(f"[mem] {rss:5.2f} GB  {stage}", flush=True)
 
 
 def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
@@ -427,8 +491,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 # capped instead of growing with residual size, so a handful of huge-residual
 # rows (LIRF, the d9 tail) can no longer pull splits toward fitting them exactly.
 LOSS_OBJECTIVE = {
-    "l2": {"lgb": "regression", "xgb": "reg:squarederror"},
-    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror"},
+    "l2": {"lgb": "regression", "xgb": "reg:squarederror", "cat": "RMSE"},
+    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror", "cat": "Huber"},
 }
 # alpha=800 beat plain L2 on the gap-realistic holdout (303.1s vs 309.2s overall,
 # improved on 6/10 airports incl. LIRF, tail d9 667.7 vs 677.0s, no airport
@@ -444,7 +508,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
         loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
-        target: str = "flip", seed: int = 42):
+        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None):
     """target="flip" fits the regressor on pushback delay `d` and reconstructs
     taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
     itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
@@ -468,6 +532,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     feats_ho = pl.read_parquet(feat_dir / "holdout_gap2025.parquet")
     lab = pl.read_parquet(feat_dir / "labels2025.parquet")
     off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
+    _mem("read feature frames")
 
     # the group encoders key on operator, which lives only in the feature frame
     lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
@@ -491,8 +556,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     # training rows, full training-split fit for the holdout.
     f_tr = add_group_encodings_oof(f_tr, tr_lab)
     f_ho = apply_group_encodings(f_ho, fit_group_encodings(tr_lab))
+    _mem("priors + group encodings (f_tr, f_ho)")
 
     Xtr, names, cats, categories = _matrix(f_tr)
+    _mem("Xtr pandas matrix")
     d_tr = tr_lab["d"].to_numpy()
     taxi_tr = tr_lab["taxi"].to_numpy()
     ym_tr = tr_lab["ym"].to_numpy()
@@ -504,11 +571,13 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     fits = {}
     for t in targets_to_fit:
         y_tr = d_tr if t == "flip" else taxi_tr
+        _mem(f"before holdout fit ({t})")
         m, pf, bi = fitter(
             Xtr[tr_mask], y_tr[tr_mask], cats,
             eta=eta, rounds=rounds, es=es, valid=(Xtr[va_mask], y_tr[va_mask]),
             objective=objective, alpha=alpha, seed=seed)
         print(f"holdout fit {time.time() - t0:.0f}s  best_iter={bi}  loss={loss}  target={t}")
+        _mem(f"after holdout fit ({t})")
         fits[t] = (m, pf, bi)
 
     # Echo classifier: same X matrix as the d-regressor, NOT filtered by `keep`
@@ -519,6 +588,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         engine, Xtr, d_tr, clf_tr_mask, clf_va_mask, cats)
     print(f"echo clf fit {time.time() - t0:.0f}s  best_iter={clf_best}  "
           f"base_rate={is_echo_tr[valid_d].mean():.3f}")
+    _mem("after echo clf")
 
     Xho, _, _, _ = _matrix(f_ho, categories)
     ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
@@ -575,6 +645,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         .filter(pl.col("taxi") >= 0)
     )
     _report(ev)
+    if ev_out is not None:  # persist the holdout predictions before the long refit phase
+        Path(ev_out).parent.mkdir(parents=True, exist_ok=True)
+        ev.write_parquet(ev_out)
+        print(f"wrote holdout predictions -> {ev_out}", flush=True)
 
     best_iter_report = "/".join(f"{t}={fits[t][2]}" for t in targets_to_fit)
     if not submit:
@@ -595,6 +669,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     f_all = add_group_encodings_oof(f_all, lab_a)
     genc_a = fit_group_encodings(lab_a)
     Xall, names_a, cats_a, cats_map = _matrix(f_all)
+    _mem("refit: Xall matrix")
     keep = lab_a["taxi"].is_between(LABEL_LO, LABEL_HI).to_numpy()
     d_all_lab = lab_a["d"].to_numpy()
     taxi_all_lab = lab_a["taxi"].to_numpy()
@@ -606,6 +681,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
                              eta=eta, rounds=full_rounds, es=0, valid=None,
                              objective=objective, alpha=alpha, seed=seed)
         fits_a[t] = (m_a, p_a)
+        _mem(f"refit: after fit ({t})")
 
     # echo classifier, refit on all 2025 labelled rows (not filtered by `keep`
     # -- see fit_echo_classifier). No early stopping, same convention as model_a.

@@ -2198,5 +2198,1003 @@ that are computed directly from the production `ev` frame, not from a
 fresh model fit, so they don't depend on `target` at all and re-running
 them under `mixed` would just reproduce the same bound with extra steps.
 
-Items 3-5 (queue, `ADES_mvt`, and a second weather seed, all under `mixed`)
-are running; results follow in the next entry once they land.
+**Two more ambient-cache bugs found and fixed before either rerun could
+produce a number.** Both `queue_test.py` and `ades_cat_test.py` (S23, S21)
+were written the same way `atfm_v1_test.py` was: treatment = `FEAT_DIR`
+as-is, baseline = `FEAT_DIR` with the family's columns dropped -- valid ONLY
+if the ambient shared cache already contains the family being tested. That
+was true when each was originally run (someone had rebuilt the cache with
+that family on first), but `cache/features/` has been rebuilt since (now
+weather=True, both families still off) -- so `FEAT_DIR` contains NEITHER
+queue nor `ADES_mvt` columns any more, and the "drop to get baseline" trick
+silently produces a baseline and treatment that are IDENTICAL (nothing to
+drop) rather than erroring.
+
+- `queue_test.py`: crashed loudly (`ColumnNotFoundError: q_ahead`) --
+  `_realised_queue` needs raw `AOBT_3_flt`/`PHASE_mvt`/`RUNWAY_mvt` that
+  aren't in the already-derived cached feature parquet at all, so there was
+  no column to silently keep. Fixed: treatment is now rebuilt from raw data
+  (`build_features(..., weather=True, queue=True)`, matching current
+  production flags plus queue), baseline is `FEAT_DIR` unchanged.
+- `ades_cat_test.py`: did NOT crash -- silently would have produced a
+  no-op comparison, the more dangerous failure mode, since `ADES_mvt` was
+  never in `CAT_COLS`/the base feature select at all (S21), so "keep it by
+  not dropping it" kept nothing. Fixed the same way: treatment rebuilds
+  `ADES_mvt` from raw and registers it in `encode.CAT_COLS` for the
+  duration of that one `run()` call only (via `try/finally`, restored
+  immediately after, production `encode.py` untouched on disk).
+- A third instance hit `metar_weather_test.py` itself once weather became
+  the production default (below) -- same root cause, opposite direction.
+
+Both fixes verified with a dry-run column check before spending compute on
+a full rerun (see commit/session notes). Lesson for future sessions: a
+test script that reads the shared `cache/features/` ambient state instead
+of asserting what it expects to find there will silently go stale the next
+time that cache is rebuilt for an unrelated reason. `metar_weather_test.py`
+now auto-detects which side of the comparison the ambient cache represents
+(S25) rather than assuming a fixed direction; `queue_test.py` and
+`ades_cat_test.py` now always rebuild their own treatment side from raw
+data rather than trusting the ambient cache for anything except the
+baseline.
+
+**3. Realised queue, rebuilt-treatment rerun under `mixed`.** Confirmed
+null, no config artifact:
+
+| | overall | 2025-01 | 2025-07 | LIRF |
+|---|---|---|---|---|
+| baseline | 335.9 | 353.9 | 320.7 | 655.1 |
+| treatment | 336.1 | 354.0 | 321.0 | 658.4 |
+| delta | +0.2 | +0.1 | +0.3 | **+3.2** |
+
+Paired cluster bootstrap: **+0.17s, 95% CI [-0.32, +0.64], P(worse)=0.758.**
+LIRF moved only +3.2s -- nowhere near weather's 33s swing -- so this is not
+a repeat of the `direct`-vs-`mixed` flip; S23's "not adopted" verdict holds
+under production config too. Queue-depth gradient (the original mechanism
+test) is still flat: -0.0 to -1.1s across `q_ahead` bins, no monotonic
+relationship. **Confirmed dead, not just under `direct`.**
+
+**4. `ADES_mvt`, rebuilt-treatment rerun under `mixed`.** Also null overall,
+but the mechanism behind the S21 rejection does NOT reproduce:
+
+| | overall | 2025-01 | 2025-07 | LIRF |
+|---|---|---|---|---|
+| baseline | 335.9 | 353.9 | 320.7 | 655.1 |
+| treatment | 335.9 | 354.6 | 319.9 | **651.4** |
+| delta | -0.1 | +0.7 | -0.8 | **-3.7** |
+
+Paired cluster bootstrap: **-0.07s, 95% CI [-2.99, +3.10], P(worse)=0.472**
+-- indistinguishable from a coin flip. **LIRF's S21 catastrophe (+78.1s
+under `direct`, `best_iter` collapsing 3310->2165) does not reproduce here**
+-- LIRF slightly improves (-3.7s) instead, confirming that specific number
+was a `direct`-target undertraining artifact, not something intrinsic to
+`ADES_mvt` as a feature. `best_iter` for the `direct` component still drops
+(3169->2485, the same undertraining signature) but LIRF routes through
+`flip` under `mixed` (7997->7994, untouched) so that damage no longer lands
+on the one airport that dominates total error. **But it doesn't just
+vanish either** -- it resurfaces as a small, consistent regression spread
+across 8 of 9 non-LIRF airports (EDDF +0.7, EDDM +0.6, EGLL +2.0, EHAM +0.7,
+LEBL +0.3, LFPG +0.7, LSZH +1.3; only LTFM improves, -0.6), which roughly
+cancels LIRF's improvement. Answers the pre-registered question precisely:
+the original headline number WAS a config artifact, but the feature is
+still dead -- for a materially different, smaller, more diffuse reason than
+S21 found (1,569-level undertraining spread thinly across the pooled model,
+not concentrated on one airport's tail). **Confirmed dead under `mixed`,
+not adopted, no further action.**
+
+**5. Weather, second seed (7) under `mixed`.** Also caught and fixed a
+third instance of the ambient-cache bug (item 2/3/4 above) here: once
+`weather=True` became the production default, `FEAT_DIR` silently already
+had the 16 weather columns baked in, so "baseline (no weather)" was
+actually reading weather-included data, and the treatment build then tried
+to left-join weather again onto it, colliding on `flight_category` and
+producing a stray `_right`-suffixed string column LightGBM can't train on
+(`ValueError: pandas dtypes must be int, float or bool`). Fixed:
+`metar_weather_test.py` now checks `_feat_dir_has_weather()` at runtime and
+builds whichever side (baseline or treatment) the ambient cache is
+currently missing, instead of assuming a fixed direction. Verified with a
+dry-run column check before rerunning.
+
+Reproduces and strengthens:
+
+| | seed 42 (original) | seed 7 |
+|---|---|---|
+| overall delta | -1.21s | **-1.73s** |
+| 95% CI | [-2.48, -0.13] | [-3.09, -0.61] |
+| P(worse) | 0.013 | **0.001** |
+| LIRF delta | -4.9s | -6.8s |
+| both months | yes (-1.6/-0.8) | yes (-2.1/-1.4) |
+
+**Number confirmed, not just seed-42 noise.** But per the pre-registered
+caveat about what a second seed can and can't show (noted in the S24
+correction before this ran): it confirms REPRODUCIBILITY, not attribution.
+The mechanism-share split moved, if anything, further toward "ordinary
+rows explain most of it" under this seed -- low_vis/VFR share is 51.1%/48.9%
+(vs seed 42's 59.2%/40.2%, already a bare majority), and the
+freezing/de-icing partitions are MORE ordinary-dominated (below_freezing
+share 18.9% vs 25.1%; deicing_risk share 12.6% vs 17.8%). The gain itself
+is robust across seeds; the "adverse conditions explain most of the gain"
+reading is not -- if anything it weakens on a second look. Logged honestly:
+**adopted for the RMSE gain, not as evidence the pre-registered de-icing/
+low-vis mechanism is the primary driver.**
+
+**Session tally (S25):** 3 of 3 reruns landed (queue confirmed dead, ADES
+confirmed dead via a different mechanism than originally measured, weather
+confirmed adopted and reproducible), plus 3 ambient-cache bugs found and
+fixed in the test harness before they could corrupt a result (one loud
+crash, one silent no-op that would have been worse, one crash from the
+adoption decision itself changing the ground truth mid-session). No change
+to the standing submission (`smart-jigsaw_v14`, weather adopted, queue and
+ADES stay off) -- this session's reruns confirmed the existing decisions
+were correct and better-understood, not something requiring a new
+submission.
+
+## 26. The unexplained half of the weather gain -- ablated by mechanism,
+    and a free LIRF noise-floor calibration (2026-09-20)
+
+Two follow-ups on S25's mechanism-attribution correction: (a) is the gain
+weather-as-operations or a seasonal/diurnal proxy the model's existing
+month/hour features encode weakly, and (b) how unusual is LIRF's
+sensitivity to config changes, calibrated against pure seed noise.
+
+**LIRF noise floor (free, from S25's existing seed42/seed7 logs -- no
+compute).** Same script, same config, only the seed differs, so the spread
+in LIRF's treatment-minus-baseline delta is a clean noise floor:
+
+| | seed 42 | seed 7 | \|diff\| |
+|---|---|---|---|
+| baseline (no weather) LIRF | 660.6 | 662.0 | 1.4s |
+| treatment (weather) LIRF | 655.7 | 655.2 | 0.5s |
+| delta (treat-base) | -4.9 | -6.8 | **1.9s <- noise floor** |
+
+Calibrated against this floor:
+- Weather's `direct`->`mixed` config swing on the delta (S25 item 1): 28.3s
+  -> -4.9s, a 33.2s swing = **17.5x the noise floor**. Confirms what S25
+  already argued structurally (deterministic direct-regressor fit, LIRF the
+  only airport whose reconstruction changes target) -- now with an
+  independent quantitative check: this is not something a different seed
+  could produce by chance.
+- Queue's LIRF delta (+3.3s, mixed only): **1.7x** the floor --
+  indistinguishable from noise. Consistent with queue's confirmed-null
+  verdict (S25 item 3).
+- `ADES_mvt`'s LIRF delta (-3.7s, mixed only): **1.9x** the floor -- also
+  indistinguishable from noise. Consistent with its confirmed-null verdict
+  (S25 item 4).
+
+**Cheap sanity check before any fit: weather columns vs month/hour.**
+Pearson correlation on the full `train2025.parquet` (N=2,085,047): all
+weak, |r|<=0.27 (`dewpoint_c` vs month strongest; `vis_mi`/`ceiling_ft`/
+`below_freezing`/`deicing_risk` all |r|<=0.08 against both month and hour).
+Nothing in the raw linear correlations screams "this is just calendar."
+But `flight_category`'s non-VFR rate has a real, large, physically sensible
+swing the correlation misses (threshold/tail effect, not a linear trend):
+**6.4% (June) -> 42.6% (December)** by month, **~14% (afternoon) -> 29%
+(night)** by hour (radiation fog). Not decisive either way -- proceeded to
+the ablation rather than skip it.
+
+**Ablation, three arms, same seed(42)/target(mixed), built by dropping
+columns from the (already weather-included) production cache**
+(`tests/metar_ablation_test.py`): baseline (no weather), adverse-only
+(`has_ceiling`, `vis_mi`, `ceiling_ft`, `below_freezing`, `deicing_risk`,
+`wx_snow`, `wx_freezing`, `wx_tstorm`, `wx_obscuration`, `flight_category`,
+`precip_1h_in` -- 11 cols), benign-only (`temp_c`, `dewpoint_c`,
+`temp_dewpoint_spread_c`, `wind_dir`, `wind_kt`, `gust_kt` -- 6 cols; no
+pressure column, never fetched -- see `fetch_metar_data.py`'s
+`DATA_FIELDS`). The two sets partition all 17 weather columns exactly.
+
+| arm | overall delta | 95% CI | P(worse) | LIRF delta |
+|---|---|---|---|---|
+| adverse-only | -0.78s | [-1.47, -0.12] | 0.008 | -1.6s |
+| benign-only | **-1.04s** | [-2.08, -0.17] | 0.010 | **-3.3s** |
+| combined (reference, S24/S25) | -1.21s | [-2.48, -0.13] | 0.013 | -4.9s |
+
+**Both arms are individually significant -- this is not "weather is fake."**
+But benign-only (temp/dewpoint/wind, ZERO visibility/ceiling/precipitation
+information) produces **57%** of the additive sum (1.04/1.82), adverse-only
+43%. Per the pre-registered decision rule, that's "most," but barely --
+same bare-majority pattern as every mechanism-share number in S24/S25 (59/41,
+51/49, 72/28, 83/17 depending on the partition). **Verdict: roughly half of
+the realized gain is NOT the de-icing/low-visibility-procedure mechanism
+this project assumed since CLAUDE.md's original feature-priority write-up
+-- it's more consistent with temp/dewpoint/wind acting as a smoother,
+higher-resolution seasonal signal than the coarse categorical `month`/
+`hour` features already in the model.** Physically sensible: `month` is a
+12-level categorical split, `temp_c` is continuous and tracks cold snaps/
+warm spells that don't align to month boundaries and vary within a month
+too -- exactly the "existing features encode it weakly" mechanism flagged
+as the thing to look for.
+
+Two secondary findings:
+- **Sub-additive**: adverse (-0.78s) + benign (-1.04s) = -1.82s vs the
+  combined set's actual -1.21s -- about 0.6s of the two subsets' gain
+  overlaps (physically plausible: freezing/de-icing and temperature are
+  mechanistically linked, so isolating either one partially captures the
+  other's signal too).
+- **LIRF's split is exactly additive** (-1.6 + -3.3 = -4.9, matching the
+  combined LIRF delta exactly) despite the overall set being sub-additive --
+  at these effect sizes (single-digit seconds on a 26,528-row lane) this is
+  more likely coincidence than a real distinction from the general
+  sub-additivity pattern; not chased further.
+
+**Not actioned as a code change** -- `weather=True` stays adopted as a
+whole family (splitting it into adverse/benign sub-families for separate
+on/off toggles would be over-engineering a ~1s partition question, and the
+combined set already outperforms either half alone). This is a mechanism
+finding for the paper-writing / honest-reporting obligation (CLAUDE.md's
+"paper framing: report the split... state plainly" instruction), not a
+lever to pull. Recorded so the eventual writeup doesn't claim weather was
+adopted for its de-icing/low-visibility mechanism when the ablation shows
+that's at most half the story.
+
+## 27. S26 follow-up: is benign weather's gain just a seasonal proxy for
+    the coarse month/hour features? No -- it survives (2026-09-22)
+
+Direct test of the hypothesis S26 raised but didn't check: does the benign
+arm (temp/dewpoint/wind, -1.04s S26) gain because it's smoother seasonal
+information than the model's existing 12-level `month` categorical /
+24-level `hour` categorical, or because it carries real weather content?
+`tests/doy_ablation_test.py`, same discipline as S26 (paired per-row squared
+error, (airport,day) cluster bootstrap, `target="mixed"`, seed 42).
+
+Built two calendar features from the movement timestamp alone (no external
+data): `doy_sin`/`doy_cos` = sin/cos(2*pi*doy/365.25) (so 31 Dec and 1 Jan
+sit next to each other, unlike raw `doy`/`month`), plus `hour_sin`/
+`hour_cos` on minute-of-day (period 1440) as the optional diurnal
+counterpart. Two-step test:
+
+| step | comparison | overall delta | 95% CI | P(worse) | LIRF delta |
+|---|---|---|---|---|---|
+| 1 | +doy vs baseline (no weather, no doy) | +0.37s | [-0.51, +1.29] | 0.791 | +2.9s |
+| 2 | +doy+benign-wx vs +doy | **-0.91s** | [-1.79, -0.18] | **0.005** | -2.5s |
+
+**Step 1: calendar resolution alone does not help.** doy_sin/cos/hour_sin/cos
+add nothing distinguishable from noise on top of the existing month/hour
+categoricals (CI straddles zero, P(worse)=0.79 -- if anything a slight,
+non-significant regression). Matches the S26 sanity check's own read: the
+existing categorical calendar features are already doing that job
+adequately, gluing on a smoother version of the same thing doesn't move
+RMSE.
+
+**Step 2: the benign-weather gain survives.** -0.91s with doy features
+already present vs S26's -1.04s without them (measured on a different
+control arm, not directly subtractable, but the same ballpark, ~87% of the
+original effect) -- and this time it clears both the CI and the
+LIRF-specific check (-2.5s, consistent with S26's -3.3s). **Verdict:
+temp/dewpoint/wind carry something calendar resolution can't reproduce --
+S26's "roughly half is a seasonal proxy" framing was the right instinct to
+check, but it doesn't hold up under a direct test: adding actual smooth
+seasonality (doy_sin/cos) has ~zero effect on its own, so the benign arm's
+gain isn't substitutable by better calendar features.** Reframes S26's
+finding: the benign weather signal is not equivalent to "seasonal proxy the
+model lacks" (the model doesn't lack one, and adding a better one doesn't
+help) -- whatever benign weather is capturing is something calendar-shaped
+features structurally cannot express (e.g. within-month cold snaps, not
+just where in the year it is).
+
+**No extrapolation risk flagged for the record**: training is 2025-only and
+holdout is Jan+Jul 2025 (full day-of-year coverage there), but ranking is
+Jan+Jul 2026 -- same days of year, so `doy_sin`/`doy_cos` would face no
+unseen values if ever adopted. Not a concern either way since step 1 showed
+no reason to adopt them.
+
+**Not actioned** -- doy/hour cyclical features are not adopted (no
+measurable gain, step 1). `weather=True` stays adopted as-is; this test
+just strengthens confidence in why (S26's own mechanism-attribution
+question, now answered rather than left open). `tests/doy_ablation_test.py`
+kept for reproducibility; its three tmp cache dirs
+(`cache/features_doy_{base,doy,doywx}_tmp/`) follow the same
+leave-in-place convention as S26's `features_ablate_*_tmp/`. Reports at
+`reports/eval/doy_{base,doy,doywx}.md`.
+
+**Bug found during setup, NOT fixed here, flagged for a separate
+decision:** `minute_of_day` (`src/features/build_features.py:475`,
+`pl.col("T").dt.hour() * 60 + pl.col("T").dt.minute()`) is computed in
+Int8 arithmetic and silently wraps for every hour >= 3 (e.g. hour=20 ->
+stored as -80, not 1200) -- confirmed by direct repro on a synthetic
+timestamp column. It is not excluded by `NON_FEATURES`/`feature_matrix`,
+so it has been feeding the model garbage values for most of the day this
+whole time, for as long as this column has existed. This test's own
+`hour_sin`/`hour_cos` were computed fresh from `T` with an explicit
+`Int32` cast specifically to avoid inheriting this bug. Left unfixed
+pending a decision, since even though it's clearly wrong (not a modeling
+choice), fixing it changes a live feature's values for every existing
+holdout/ranking run and needs the same distribution-shift and before/after
+significance check as any other feature change (S5's discipline) before
+being trusted -- not something to slip in as a side effect of an unrelated
+ablation.
+
+## 28. `minute_of_day` Int8-overflow bug fixed and validated -- adopted,
+    net neutral-to-positive, zero regressions (2026-09-22)
+
+Followed up on the S27 bug flag. Fix: `build_features.py` line 475 now
+casts `dt.hour()` to Int16 before the `*60` multiply
+(`pl.col("T").dt.hour().cast(pl.Int16) * 60 + pl.col("T").dt.minute()`),
+so `minute_of_day` no longer wraps -- verified range is now [0, 1439]
+(was [-128, 127]) and matches `hour*60+minute` exactly on the rebuilt
+cache.
+
+Rebuilt the production cache (`cache/features/{train2025,
+holdout_gap2025, ranking}.parquet`) via `export_model_inputs.py` with the
+fix; the pre-fix cache was copied to `cache/features_before_minfix_tmp/`
+first so a clean before/after comparison was possible without re-deriving
+the buggy state from scratch.
+
+**Validated before adopting** (`tests/minute_of_day_fix_test.py`, same
+discipline as every other feature change this project makes --
+`target="mixed"`, seed 42, paired per-row squared error, (airport,day)
+cluster bootstrap):
+
+| | overall | 2025-01 | 2025-07 | LIRF |
+|---|---|---|---|---|
+| before (buggy) | 335.9 | 353.9 | 320.7 | 655.1 |
+| after (fixed) | **335.6** | 354.3 | **319.8** | **652.7** |
+| delta | **-0.3s** | +0.4 | -0.9 | -2.5 |
+
+Cluster bootstrap: **delta=-0.31s, 95% CI=[-0.76, +0.13], P(worse)=0.089.**
+Every other airport's delta is <=0.3s (noise-floor sized, see S26's 1.9s
+LIRF noise-floor calibration for scale) -- **zero regressions of concern
+anywhere.** January ticked up marginally (+0.4s) while July improved
+(-0.9s), so this doesn't clear the S5 "both months must improve" bar for
+a speculative feature, and the overall CI technically straddles zero, so
+this would NOT clear the bar this project uses to *adopt a new feature*.
+
+**Different bar applies here, though: this is a bug fix, not a
+hypothesis.** The pre-fix `minute_of_day` was not "a feature that might
+not help" -- it was mislabeled data (values outside the physically
+possible 0-1439 range for ~21/24 hours of the day). The relevant question
+isn't "does fixing it help enough to justify adopting a new feature," it's
+"does fixing it break anything" -- and it doesn't: no airport regressed
+outside noise, the overall point estimate moved in the right direction,
+and LIRF (which the model already leans on time-of-day-shaped signals for
+via `hour`/`dow`) improved by -2.5s, comparable in size to real adopted
+wins like S26's benign-weather LIRF delta (-3.3s). **Adopted** -- kept as
+the new production cache; no reason to hold a known-wrong column in place
+pending a stronger significance result that a correctness fix was never
+going to need.
+
+Reports at `reports/eval/minfix_{before,after}.md`. `cache/
+features_before_minfix_tmp/` kept (not deleted) in case a future session
+needs to re-diff against the pre-fix state.
+
+## 29. ADS-B pushback recovery: ceiling check, then flight-level validation
+    on the one-day probe -- naive detector is currently net-negative
+    (2026-09-23)
+
+Prompted by a suggestion to sanity-check the 400 GB ADS-B download idea
+before committing to it: `AOBT_3_flt` (already a feature, `aobt3_taxi`) is a
+noisy read on the same off-block event as `BLOCK_TIME_UTC_mvt`
+(`reports/step0_audit.md` §4: 21.0% within ±1 min, 74.6% within ±5 min,
+naive taxi from it alone RMSE 384.9s vs true-taxi sd 417.5s) -- confirmed
+this was already known and already a feature, not a clean leak sitting
+unused. ADS-B's only possible value is denoising that channel further, not
+adding a new signal. Full detail in `reports/adsb_recovery_ceiling.md`;
+summary here.
+
+**Step 1 -- best-case ceiling** (`tests/adsb_ceiling_test.py`, run against
+current production `target="mixed"`, holdout RMSE 335.6s): a one-day
+adsb.lol ground-coverage probe (2025-01-15, 2.1 GB, `external-data/adsb/
+adsb_20250115.parquet`) found ground positions at only 6 of 10 departure
+airports -- EHAM, EGLL, EDDM, EDDF, LSZH, LEBL. LFPG, LEMD, LIRF, LTFM had
+**zero** aircraft with a ground position that day. Covered airports are
+56.1% of ranking DEP rows but only 25.0% of holdout squared error (they're
+the easier airports). Oracle ceiling (perfect recovery on covered rows,
+unchanged elsewhere): 335.6s -> 290.6s, **-45.0s (-13.4%)**; sensitivity at
+50%/25% assumed coverage: -21.7s (-6.5%) / -10.7s (-3.2%). LIRF (29.1% of
+total squared error, the single largest contributor) has zero coverage --
+structurally out of reach regardless of the rest of this analysis.
+
+**Step 2 -- measure the coverage guess instead of assuming it**
+(`tests/adsb_recovery_test.py`). Neither dataset has a callsign/tail-to-
+flight key in the columns actually extracted (the ADS-B probe kept `hex,
+reg, ts, lat, lon, alt, gs, airport` -- no callsign message), so matching
+uses the one anchor both sides share and neither blanks: movement time.
+Per (airport, hex): `alt == -1` is a categorical ADS-B surface-position
+flag (not a computed altitude threshold, so segmentation is exact and
+airport-elevation-independent) -- a ground run immediately followed by an
+airborne run is a candidate departure, its last ground sample the takeoff
+proxy. Within that run, the *last* sub-run of >=3 min with ground speed
+<=2 kt is the candidate gate dwell; first sample after it ends is the
+pushback estimate (no such dwell = `censored`, a takeoff seen but no usable
+pushback). Candidate takeoffs matched 1:1 to true DEP movements by nearest
+`MVT_TIME_UTC_mvt`, same airport, +-180s tolerance, greedy closest-pairs-first.
+
+**Recovery: 25.5% overall** (670/2,629 true DEP movements on 2025-01-15
+across the 6 covered airports), ranging 9.7% (EDDF) to 77.0% (EDDM, see
+caveat below) -- this lands at the **pessimistic** end of step 1's 25-50%
+sensitivity range, not the middle, and it's a real measurement now, not a
+guess. Most departures at EGLL/EDDF/LEBL never show a clean >=3-minute
+near-zero-speed dwell in ADS-B at all (~90% `censored`), consistent with
+known gate/apron ADS-B reception problems (buildings, multipath), not a
+detector bug specific to those airports.
+
+**Accuracy on the matched-and-usable set (n=670) is worse than the feature
+already in the model, on every axis measured**: median offset **+7.84 min**
+(detected pushback lags true off-block, not just noisier around zero),
+\|d\|<=60s only 18.2%, \|d\|<=300s only 31.8%, RMSE **2,179.6s** -- vs
+`AOBT_3_flt`'s 21.0% / 74.6% / (384.9s naive-taxi RMSE) from the existing
+audit. True taxi sd for this same 2,629-row population is 538.8s, so the
+naive ADS-B-derived taxi estimate (`MVT_TIME - adsb_pushback`, error exactly
+equal to the timing diff since MVT_TIME is exact) is **RMSE 2,179.6s --
+over 4x worse than just predicting the mean**, before any model even sees
+it.
+
+**EDDM's 77% recovery is very likely a different mechanism, not better
+coverage** -- flagged, not chased further this session. Its ground-row
+count is ~4-5x every other covered airport, its censored rate is far the
+lowest (22% vs 62-88% elsewhere), and its median offset is a large positive
++21.9 min. Plausible read: Munich in January routinely holds aircraft at a
+de-icing pad for several minutes after pushback before the runway -- a
+second >=3-minute near-zero-speed dwell downstream of the real pushback
+that "last dwell before takeoff" picks up instead of the gate departure.
+Consistent with all three symptoms at once without needing a per-airport
+code difference; would need per-flight ADS-B track inspection to confirm.
+
+**Conclusion.** This is a first-pass, unrefined detector (ground-speed
+threshold + longest-dwell heuristic), not a mature pushback algorithm -- a
+stand/gate-position-aware version, or one that excludes de-icing-pad
+dwells, would likely do better. But two findings don't depend on refining
+it: (1) coverage is the harder constraint -- 4/10 airports (LIRF included)
+have zero ADS-B ground data at all, and even among the 6 covered ones only
+25.5% of real departures yield any usable signal, matching the pessimistic
+end of the already-modeled sensitivity range; (2) where recovered, the raw
+signal is currently worse than useless (RMSE 2,179.6s vs a 538.8s
+do-nothing baseline) and would need substantial detector engineering
+(stand-position matching, de-icing-hold exclusion, tighter dwell criteria)
+before it could even match `AOBT_3_flt`, let alone denoise it.
+
+**Decision: do not proceed to the full 400 GB download** without first
+validating that a materially better pushback detector is achievable on
+this same one day of data -- the current one doesn't clear the bar the
+existing feature already sets, on data that cost nothing further to check.
+`tests/adsb_ceiling_test.py` and `tests/adsb_recovery_test.py` are kept for
+reproducibility (`logs/adsb_ceiling_test.log`, `logs/adsb_recovery_test.log`);
+`external-data/adsb/adsb_20250115.parquet` is the one day of probe data
+already on disk, no further ADS-B data was pulled this session.
+
+## 30. Four concrete LIRF follow-up checks -- distribution, runway/stand,
+    LIRF-only model, and what it says about the flip/CEIL fix (2026-09-23)
+
+Full detail in `reports/lirf_investigation.md` §7 (new); summary here.
+Scripts: `tests/lirf_distribution_test.py` (Q1/Q2),
+`tests/lirf_specific_model_test.py` (Q3).
+
+**Q1 -- distribution shape: a clean three-part mixture, not bimodal.**
+Full-year LIRF taxi (n=160,704): mean 1195s, sd 1332s vs 974s/414s pooled
+across the other 9 airports. The raw histogram is unimodal, no visible
+second mode. But decomposed by the two already-known mechanisms:
+"ordinary" (81.9% of rows, sd **438** -- statistically indistinguishable
+from every other airport's pooled sd of 414), "echo" (\|d\|<30s, 17.8% of
+rows, sd 942), "extreme" (taxi>7200s, 0.3% of rows, sd 16,504, 3.9% of
+total taxi-mass). **LIRF's 3.2x variance is not intrinsic to typical LIRF
+taxiing -- it's entirely the two known contaminating mechanisms**, not
+quantified this cleanly before.
+
+**Q2 -- runway/stand pattern: real, mostly already visible, one untested
+candidate.** Runway 25 carries ~90% of traffic every month (no seasonal
+config shift -- LIRF is single-runway-dominant year-round, not switching).
+Mean taxi does vary by runway in the "core" (non-echo, non-extreme)
+population (16L 1735s down to 25's 1064s), but `RUNWAY_mvt` is already a
+raw categorical feature. The (runway=25, July, hour 8-14) slice flagged in
+§1 shows a real diurnal effect surviving echo/extreme exclusion (823s at
+hour 0 -> 1259-1514s plateau hours 8-14) -- isolated more cleanly than the
+earlier "existing congestion features are flat" finding, which tested this
+on the whole contaminated distribution. Not yet tested whether the
+existing congestion features discriminate this specific slice directly --
+flagged as a candidate, not chased further.
+
+**Q3 -- LIRF-specific model vs pooled, post-fixes: no, slightly worse
+(+2.6%), a clean negative result.** The 2026-09-02 attempt
+(`stage3a_resid.md`) failed for two bundled reasons (widened label window
+polluting the *shared* pooled model; residual heads overfitting a crude
+2-fold OOF) that don't apply to this design (a from-scratch LIRF-only base
+regressor, own priors/group-encodings, evaluated through the *same*
+already-validated echo blend as production). Result: pooled 660.6s vs
+LIRF-only 677.9s (+17.3s). Interesting nuance: LIRF-only's raw pre-blend
+regressor is very slightly *better* in isolation (809.1s vs 816.2s) but
+composes worse with a blend calibrated for the pooled model's residual
+structure -- not chased further since the net (submittable) effect is
+unambiguous either way. **Cross-airport pooling still helps LIRF**, even
+with 134,176 of its own training rows and every current fix in place --
+confirms the original architectural call (PROGRESS.md §8) directly rather
+than just arguing it from first principles.
+
+**Q4 -- are the flip/CEIL dynamics (§12) symptomatic of something deeper?
+Yes -- same finding as Q1, from the model's side.** `flip`'s
+`offset - d̂` reconstruction inherits the exact, always-known `offset` term
+for both of Q1's contaminating segments; `direct` has no such path and is
+range-capped by `LABEL_HI=7200`. Q1's decomposition and the flip/CEIL
+story are one fact seen twice: LIRF is an ordinary airport (core sd≈438)
+plus two identifiable contaminating mechanisms, and `offset`-aware
+inductive bias (flip) handles that contamination structurally better than
+`direct`. Also explains Q3: pooling helps the ordinary 82% (shared
+cross-airport structure); the CEIL fix and echo blend -- not model
+specialization -- handle the contaminating 18%+0.3%. Two different
+problems, already treated by two different, already-shipped mechanisms --
+no third undiscovered LIRF problem behind either one.
+
+**Not actioned as a code change** -- all four are diagnostic, confirming
+the current design rather than surfacing a new lever. One candidate noted
+for a future session: direct-test the existing congestion features on the
+(runway=25, July, hour 8-14) slice specifically (Q2).
+
+## 31. Read LIRF's top-10 worst rows individually -- found a real, targeted
+    echo-blend bug, and confirmed hedging doesn't work (2026-09-23)
+
+Follow-up to §30's Q1 (top 10 rows = 58.4% of LIRF's SSE, never actually
+read). Full detail in `reports/lirf_investigation.md` §8; script
+`tests/lirf_top10_test.py`.
+
+**Scale**: top 10 LIRF holdout rows = 28.5% of LIRF's SSE, **8.4% of the
+entire holdout's squared error** -- ten rows out of 344,339.
+
+**Shared trait, not previously flagged**: all 10 have `has_aobt3=False`
+and every NM-matched (`_flt`) field null -- not a random tail draw, 100%
+from the small NM-completely-unmatched population.
+
+**Two distinct, opposite-direction mechanisms**:
+- Rows 1-3 (~21% of LIRF's SSE): true taxi clustered at **24.2-24.3
+  hours** each -- `BLOCK_TIME_UTC_mvt` precedes scheduled departure by
+  hours, actual takeoff follows ~24h later. Reads like a
+  cancelled-and-reinstated-next-day flight or a record-matching artifact.
+  Model under-predicts 21-33k seconds; nothing in training is anywhere
+  near this magnitude -- looks like a genuine extrapolation limit, not an
+  obvious bug.
+- **Rows 4-9 (6 of the 10, ~6.3% of LIRF's SSE) -- a real, targeted,
+  fixable bug.** True taxi is ordinary (723-1,444s). Each has a genuinely
+  large gate delay (`d`=11,800-19,500s) followed by a normal taxi-out. The
+  echo classifier assigns these moderate-high `echo_prob` (0.56-0.75)
+  anyway, pulling the blend toward the huge `offset` and inflating a
+  12-24 minute taxi into a predicted 2.8-4.7 hours. **The pre-blend raw
+  regressor was already closer to truth than the blended prediction on
+  all 6** -- the echo blend is actively injecting error, not fixing
+  anything, specifically within `has_aobt3=False` where the classifier
+  lacks the `_flt`-derived features it otherwise relies on.
+- Row 10: mirror-image -- a near-perfect echo (`d`=-5s) under-confidently
+  scored (`echo_prob=0.281`), causing under-prediction.
+
+**Hedge-strategy what-ifs (override only these 10 rows)**: oracle
+(predict truth exactly) recovers -14.53s (+4.3% RMSE) -- the hard ceiling,
+capped by RMSE's square root, well below the ~8% a linear SSE-share read
+would suggest. Every uniform hedge tested (offset-anchored, drop-the-blend,
+half-hedge) recovers near-nothing or makes it worse (drop-the-blend:
++2.73s, actively worse) -- because rows 1-3/10 need pushing *up* toward
+offset while rows 4-9 need pushing *down* away from it. No single global
+rule serves both.
+
+**Decision point, not yet built**: a candidate fix (suppress/recalibrate
+`echo_prob` specifically when the classifier's own inputs are almost
+entirely null, i.e. `has_aobt3=False`) targets exactly the rows-4-9
+mechanism. Flagging rather than building unilaterally -- the echo blend
+has already caused two regressions from over-eager global changes (§6,
+§12), so this needs the same validate-before-ship discipline as every
+prior change, and a decision on whether to prototype it now.
+
+## 32. The rows-4-9 fix does NOT survive validation -- built out the three
+    scoping checks requested, then an end-to-end simulation killed it
+    (2026-09-23, same day as §31)
+
+Full detail in `reports/lirf_investigation.md` §9; scripts
+`tests/lirf_echo_gate_scoping_test.py`, `tests/echo_ranking_score_test.py`.
+
+Three checks done before building anything (per review): (1) rows-4-9-only
+oracle = **+3.18s (+0.94%)**, matching the predicted 3-5s range, not §31's
+14.53s which included out-of-scope rows 1-3. (2) The real population is
+far bigger than 6 rows: widening the exact gate across the whole holdout
+finds **81 rows (79 LIRF) carrying 11.71% of total squared error** --
+bigger than LIRF's entire top-10. (3) Fit the production echo classifier
+on all-2025 data and scored it on ranking directly (not a proxy): **178
+null-lane rows with `echo_prob_r>0.5`, 177 LIRF** -- matching the "two
+hundred" order of magnitude predicted, not the pessimistic case.
+
+**Then the check that mattered most: does fixing this cost more than it
+saves?** The same null lane has **116 correctly-caught true echoes** at
+`echo_prob>0.5`. Forcing those onto the raw-model-only path would cost
+6.03 billion in squared error -- more than the 81 false positives'
+combined 4.59 billion. True and false positives turned out **observationally
+indistinguishable** on everything checked (offset, stand, runway, month,
+even `echo_prob` itself has heavy overlap: FP's max 0.843 exceeds TP's
+median 0.709). End-to-end simulation (real `_reconstruct_taxi`, not row
+counts) of every monotonic recalibration -- hard thresholds at 0.5-0.85,
+proportional damping, band-limited suppression -- **regressed at every
+setting tested** except one noise-level exception (×0.9 damping, -0.15s).
+
+**Conclusion: no fix, not shipped.** The mechanism (§31) is real and
+correctly diagnosed, but doesn't correspond to an extractable improvement
+given current features -- the null lane's ~200 rows beyond the identified
+TP/FP set are already net-helped by the existing continuous blend, so any
+correction broad enough to catch the 81 false positives removes more value
+than it recovers. Recorded precisely so this isn't re-derived later,
+matching the project's convention for negative results
+(`stage3a_resid.md`, the rejected hour-encoding/quantile-objective
+attempts). A real fix would need a genuinely new separating feature, not a
+blend adjustment -- none found among available fields (every `_flt` field
+is null by construction for this population).
+
+Rows 1-3 (the ~24h anomalies) remain separate and unbundled, per review
+guidance -- their holdout signature depends on `BLOCK_TIME_UTC_mvt`
+preceding `SCHED_TIME_UTC_mvt`, which is exactly the field blanked for
+ranking DEP rows, so there is no equivalent pre-hoc detector available.
+Genuinely open for a future session.
+
+## 33. Brainstormed and exhausted every available-feature angle for the
+    null lane -- genuinely closed (2026-09-23, same day as §32)
+
+Full detail in `reports/lirf_investigation.md` §10. Checked isotonic
+calibration (the "right-shaped" fix vs §32's crude thresholds): honest
+Jan/Jul cross-fit gives -0.18s, noise-level -- `echo_prob` is already
+close to calibrated for this lane. Then swept every available feature for
+TP/FP separation: `ADES_mvt` (no concentration), `AIRCRAFT_TYPE_mvt`
+(**null for 100% of both groups** -- this population's own movement
+record is sparse, not just NM-flight-list-unmatched), `stand_echo_rate`
+(AUC 0.607 vs `echo_prob` alone's 0.726, and combining the two scores
+**worse**, 0.710 -- stand info dilutes rather than adds signal).
+
+**Conclusion: genuinely closed, not under-explored.** Every readily
+available field has been checked; none beats the status quo.
+
+**Correction, same day: ATFM is not an open lever here.** An earlier
+draft named ATFM regulation records as the remaining option -- stale,
+carried from the project's original planning notes ("permission/licensing
+unresolved") without checking it against what actually happened. ATFM was
+already ingested, tested, and closed in §20: -0.4s, P(worse)=0.453,
+against a noise-corrected **2.07s structural ceiling on any (airport,
+day)-granularity feature** -- a general bound from residual-variance
+decomposition, not specific to this lane, so it applies here identically.
+It's also the wrong shape regardless: an airport-day feature is constant
+across every LIRF departure that day, so it can't separate a true echo
+from a same-day long gate delay -- exactly the per-flight separability
+§10/9 already showed is missing. Not a candidate; don't reopen without
+new sub-daily data (EUROCONTROL doesn't publish it).
+
+**What's actually open**: (1) rows 1-3 -- undetectable in production by
+construction, signature depends on the blanked `BLOCK_TIME_UTC_mvt`,
+needs a proxy or stays unreachable; (2) whether *any* signal not yet
+examined separates a true echo from a long gate delay when NM fields are
+null -- a feature-discovery question, not recalibration (§32 already
+closed recalibration; this section's sweep closed the *currently
+available* fields, but not the general question). Beyond those two, this
+investigation is at a genuine stopping point.
+
+## 34. Correction to §33/rows-1-3: `LABEL_HI=7200` is a hyperparameter,
+    not a structural limit -- raising it measurably helps, but regresses
+    overall (2026-09-23)
+
+Full detail in `reports/lirf_investigation.md` §11; script
+`tests/label_hi_test.py`. Every prior mention of rows 1-3 (§8-10, and the
+"structural" framing accepted through §33) treated the GBM's inability to
+predict past ~7200s as an architectural fact. It's a choice
+(`LABEL_LO, LABEL_HI = 30, 7200` in `fit.py`), last tested
+(`stage3a_resid.md`, 2026-09-02) under an architecture that no longer
+exists (plain L2, no Huber, no echo classifier, no CEIL fix). Re-tested
+under the current one: `target="flip"` pooled across all 10 airports,
+Huber alpha=800 unchanged, `LABEL_HI=7200` vs `LABEL_HI=200000`
+(effectively unbounded). Priors/encodings/classifier don't depend on
+`LABEL_HI`, fit once and shared -- isolates the test to one line.
+
+**Confirmed real: the mechanism works.** LIRF's 3 most extreme rows
+improved **-12.7%** (29,036.7s -> 25,347.9s) -- Huber's gradient-capping
+at `alpha=800` lets the model learn a soft, extremity-aware adjustment
+once given the training signal, unlike L2 which would let those residuals
+dominate. **§33's "unreachable by construction" language for rows 1-3 is
+corrected** -- it described a hyperparameter's current setting, not a
+hard limit.
+
+**But it's still a net regression, now for a precisely measured reason**:
+overall +5.97s (+1.7%, P(worse)=0.978, real not noise), July alone +10.46s
+(fails the both-months rule), LIRF overall +36.25s worse despite its 3
+best rows improving, and -- the key finding -- **EDDF/EHAM/LEBL all got
+worse too**, despite having essentially zero extreme rows. Widening the
+*shared* regressor's label window changes split selection and leaf values
+everywhere in the pooled model, not just on the tail -- those airports pay
+a tax for a label range they never use. Same failure shape as the
+original L2 test, smaller in magnitude, not eliminated.
+
+**Decision**: don't raise `LABEL_HI` globally, and don't search for a
+moderate intermediate value either -- any shared-window widening still
+taxes the 9 airports that don't need it, so that search is tuning one
+number against a known-bad tradeoff, not a structural fix. Points to a
+**separate tail model** instead (main regressor untouched at
+`LABEL_HI=7200`, so the 9 unaffected airports pay nothing) -- see §35 for
+the oracle-gated ceiling check on that idea, run before building any
+real router (the routing problem is exactly what killed §32: rows 1-3's
+signature depends on the blanked `BLOCK_TIME_UTC_mvt`).
+
+## 35. Separate tail model -- oracle-gated ceiling is real and substantial:
+    +3.63% overall (2026-09-23, same day as §34)
+
+Full detail in `reports/lirf_investigation.md` §12; script
+`tests/tail_model_oracle_test.py`. Measured the tail model's value with an
+oracle GATE (perfect routing on the true label) before building any real
+router, per §34's ordering -- if the ceiling is small, the routing problem
+(which killed §32) is moot.
+
+Population: true taxi>7200, pooled across all 10 airports -- 584 total 2025
+rows (480 LIRF, rest spread across 5 other airports), 435 training / 149
+holdout. Tail model: same `flip` target/Huber alpha=800, fit on only 348
+training rows (87 held out for early stopping) -- converged in 22 rounds,
+deliberately tiny given the population size.
+
+**On the 149 true holdout tail rows: the current production blend
+(10,093.2s RMSE) is worse than just guessing `offset` with zero training
+(9,126.5s)** -- a free heuristic beats the shipped architecture here. The
+actual tail model edges out even that (9,086.0s).
+
+**Oracle-gated overall RMSE (real tail-model predictions, oracle only on
+which rows get routed to it): 342.19s -> 329.76s, -12.44s (+3.63%).**
+Larger than several wins already adopted this session (weather ~1-4s,
+minute_of_day fix -0.3s) -- clears the bar for the gate to be worth
+solving. Broad-based, not LIRF-only: EGLL -69% (n=20), LIRF -26% (n=113),
+LSZH -28% (n=4); LFPG barely moves (-3%, n=9, matches its known
+data-corruption-style outliers).
+
+**Decision: build the router next.** The ceiling justifies the harder
+problem -- detecting tail rows using only pre-hoc information (offset,
+`has_aobt3`, `echo_prob`, congestion features, never the blanked
+`BLOCK_TIME`/taxi), checked for the same false-positive-damage risk that
+sank §32's echo-blend fix. Not yet built.
+
+## 36. The router, built and honestly validated -- decisive failure at the
+    default threshold, exactly the risk flagged going in (2026-09-23,
+    same day as §35)
+
+Full detail in `reports/lirf_investigation.md` §13; script
+`tests/tail_router_test.py`. Pre-check: `offset` alone has AUC=0.956 for
+predicting tail membership -- far more separable than the null-lane
+investigation's 0.726 ceiling, a strong prior this could work. Built a
+P(tail) classifier exactly mirroring `fit_echo_classifier`'s structure and
+discipline, retargeted at `is_tail = taxi>LABEL_HI`. Final prediction:
+`P(tail)*pred_tail + (1-P(tail))*pred_main`, with `pred_main` (the
+existing echo blend) completely untouched.
+
+**Result: a certain, large regression.** 342.19s -> 373.08s (+30.89s,
+-9.03%), **P(worse)=1.000**. Every airport got worse, including ones with
+essentially zero tail rows -- broad damage, not a false-positive hotspot.
+At P>0.5, precision is only 24.2% (68 TP, **213 FP**) against a 0.025%
+base rate, and those 213 false positives get pulled toward the tail
+model's huge output, exploding their RMSE from 2,585 to 6,426. High AUC
+on one feature doesn't guarantee usable precision at this base rate --
+the asymmetric cost (a wrong tail-route is catastrophic, a right one is
+merely helpful) means absolute FP count matters more than AUC.
+
+**Not yet closed** -- default operating point tested, not necessarily the
+best one. Per-row predictions saved (`cache/tail_router_ev.parquet`) for
+a free threshold sweep -- checking whether a much higher-confidence
+threshold or a hard gate recovers part of §35's ceiling without the
+broad damage. In progress.
+
+## 37. Stand-aware ADS-B pushback detector -- §29's null reversed on
+    accuracy, coverage now measured across 6 days; bulk pull running
+    (2026-09-26)
+
+Follow-up to §29 (naive "last dwell before takeoff" detector: 25.5%
+recovery, 2,179.6s RMSE, EDDM's 77% likely de-icing holds).
+
+**Stand coordinates.** `src/ingest/fetch_stands.py` pulls apt.dat row codes
+1300/1301 from the X-Plane Scenery Gateway (`xplane_airports` package, no
+account) -> `data/external/stands.csv`, 2,838 stands, 151-513 per airport
+(EDDF 227), all 10 packs full 3D sceneries, every stand inside its airport
+box. Licence: GPLv2 (`COPYING` in each pack, kept as
+`data/external/stands_LICENSE_GPLv2.txt`); DATA_SOURCES.md row added.
+`src/ingest/stands.py` normalises Gateway names ("Gate A04", "202-(C)",
+"F6") to STAND_mvt ("A04", "202", "F06"), with a variant-letter fallback
+(115B -> 115): own-stand coords for 86-100% of 2025 DEP rows per airport.
+
+**Diagnosis before building** (`tests/adsb_stand_diag_test.py`, 2025-01-15).
+The first worrying number (3-30% of surface points within 60m of a stand)
+counted every taxiway/runway point; per matched departure the picture is:
+coordinates right (tracks that start before off-block begin a median
+7-16m from own stand); tolerance secondary (60->150m moves own-stand hit
+rate modestly, never doubles from a real base); **the dominant factor is
+that tracks start late** -- only 2-38% of matched departures have any
+surface point at/before true off-block, median first point +1.5 to +13
+min after it. The EDDM plot shows a track *appearing* on its stand at
+-0.1 min with nothing before: transponders go on at pushback. So the
+signal is appearance at the own stand, not the end of a dwell -- the §29
+rule discarded exactly the good cases.
+
+**Detector** (`src/link/adsb_pushback.py`; split-blind, reads only
+MVT_TIME and STAND_mvt). Surface = gs < 40 (alt == -1 agrees on 374,462
+points, disagrees on ~18.6k). Surface runs ending in takeoff matched 1:1 to
+DEP by takeoff time +-180s, preferring runs that visit the own stand.
+Tiers: `dwell` (stationary at own stand, then moves: first sample after),
+`appear` (run starts at the stand: first sample), `pass` (reaches the
+stand after starting elsewhere -- useless, drop). Output
+`cache/adsb_pushback/day=*.parquet` keyed on MVT_ID_mvt.
+
+2025-01-15, same rows (n=838): ADS-B median +42s, 57.5% within +-60s,
+87.8% within +-5min, **RMSE 198s vs AOBT_3_flt 654s**. appear 119s, dwell
+225s, pass 465s.
+
+**Raw extract contamination.** The Colab day files for 2025-07-15,
+2025-09-15, 2025-11-15, 2026-07-15 contained 12-28% points from *other*
+collected days (work directory not cleared between days). Filtering each
+file to its own UTC date recovers it (2025-01-15 reproduces exactly:
+823 appear+dwell). `src/ingest/normalise_adsb.py` does this and writes one
+schema to `data/external/adsb/day=*/`. The replacement fetcher streams the
+tar and never extracts to disk, so it can't recur.
+
+**Coverage across 6 days** -- recovery (appear+dwell) % of DEP:
+
+| day | EDDF | EDDM | EGLL | EHAM | LEBL | LEMD | LFPG | LIRF | LSZH | all |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2025-01-15 | 12 | 81 | 4 | 54 | 32 | 0 | 0 | 0 | 25 | 20.5 |
+| 2025-07-15 | 17 | 0 | 1 | 73 | 18 | 0 | 0 | 14 | 13 | 16.1 |
+| 2025-09-15 | 36 | 70 | 2 | 75 | 25 | 26 | 0 | 1 | 15 | 28.6 |
+| 2025-11-15 | 48 | 72 | 14 | 75 | 44 | 15 | 0 | 10 | 26 | 33.1 |
+| 2026-01-15 | 8 | 76 | 19 | 71 | 34 | 25 | 0 | 11 | 32 | 29.4 |
+| 2026-07-15 | 2 | 76 | 72 | 77 | 62 | 0.5 | 0 | 0 | 19 | 34.3 |
+
+§29's "4 airports have zero coverage" was a Jan-2025 artifact for LIRF,
+LEMD, LFPG -- the feeder network grew into them during 2025. But: LIRF has
+**1 aircraft** with surface points on 2026-07-15 (none of the July-ranking
+LIRF opportunity survives, on this day at least); LFPG tracks are too
+sparse to ever reach a stand (median 4-16 points per matched run); LTFM
+zero on every day (its box is right -- all 351 stands inside). Day-to-day
+swings are large (EDDF 2-48%): one day per month cannot characterise it.
+
+**Accuracy, 2025 days pooled** (`tests/adsb_multiday_test.py`): ADS-B
+beats AOBT_3_flt everywhere except LIRF and EGLL. LEMD (+123s median)
+and EGLL (+138-182s) show a consistent late lag (learnable offset). LIRF
+is harmful: RMSE 1,142s vs AOBT_3 546s (2025-07-15: 1,445s vs model 561s)
+-- unverified hypothesis: echo rows, where the label is not the physical
+pushback ADS-B measures.
+
+**The load-bearing EDDM question.** 2025-07-15 has no EDDM coverage, so
+the ordinary days are 2025-09-15 / 2025-11-15 -- in the model's training
+set, no fair model comparison. ADS-B RMSE there 184s / 155s (AOBT_3 347s
+/ 243s) vs the model's full-holdout EDDM RMSE 187s: on normal days ADS-B
+alone is ~at parity with the model at EDDM. The 430s -> 224s headline was
+the de-icing day. Fair holdout comparisons, simple mean of model and
+ADS-B: 2025-01-15 excl EDDM 146 -> 120s (n=532); 2025-07-15 excl LIRF 153
+-> 154s (n=789; EHAM 125 -> 130); all holdout rows excl LIRF 225 -> 169s
+(n=1,612). Winter helps, the one summer day doesn't. Still a feature
+candidate, not a replacement, but the evidence now rests on two holdout
+days.
+
+**Next.** `src/ingest/fetch_adsb.py` (PREFERRED_RELEASES.txt first, then
+prod-0 / staging-0 / prod-0tmp / staging-0tmp; corrupt replica -> next;
+atomic per-day writes + `manifest.csv`, resumable). Smoke test on
+2026-01-15 matches the Colab extract on 99.8% of (hex, ts, airport) keys;
+MLAT is 0.1% of points, so MLAT noise is not a factor. Full Jan+Jul 2025
+and 2026 pull running on Colab (2026-09-26, ~5 min/day Jan, ~10-12
+min/day Jul). Then: detector over all days, holdout evaluation as a model
+feature (tier + coverage flag), EDDM Jul-2025 excluded by necessity.
+Data licence: ODbL 1.0 (adsb.lol), DATA_SOURCES.md row added.
+
+## 38. Stand/runway geometry as model features -- REJECTED (2026-09-27)
+
+Family 8 (`src/features/geometry.py`, `build_features(geometry=...)`, off by
+default): stand position (metres from the airport's mean stand) and the
+straight-line distance from stand to the departure-runway threshold, from
+Gateway apt.dat (`data/external/runways.csv`, 72 thresholds; `RUNWAY_mvt`
+names match the apt.dat ends exactly). The distance is physically real
+(Spearman with taxi 0.28-0.61 by airport; resolves for 96% of rows).
+Pre-registered test `tests/stand_geometry_test.py` (log
+`logs/stand_geometry_test.log`):
+
+- overall 335.6 -> 336.2 s, **+0.59 s**, CI [+0.08, +1.20], P(worse)=0.990
+- Jan -0.13, **Jul +1.23** (fails the both-months rule)
+- the loss is almost all LIRF (+5.2 s); 7 of the other 9 airports move
+  -0.1 to -0.5 s
+- mechanism check fails: rare (stand, runway) pairs (<50 training
+  departures) got worse too (+0.46 vs +0.63), when geometry should help
+  exactly there
+
+`STAND_mvt`/`RUNWAY_mvt` categoricals plus the taxi priors already carry the
+geometry. This also lowers the expected value of OSM routed distance
+("Future step B") unless routing captures something straight-line doesn't.
+Stands stay in use for the ADS-B detector only.
+
+## 39. ADS-B pushback blend -- ADOPTED, pre-registered, both months
+    (2026-09-27)
+
+124 days (Jan+Jul 2025 and 2026) pulled with `src/ingest/fetch_adsb.py` on
+Colab, all `ok`, 0 bad members, no cross-day contamination
+(`external-data/adsb-fetch/manifest.csv`). Detector run over 126 days
+(`logs/adsb_pushback_all.log`). The evaluation was pre-registered in
+`reports/adsb_blend_preregistration.md` (committed d3ed616 before any
+result); results are appended there. Script `tests/adsb_blend_test.py`,
+log `logs/adsb_blend_test.log`.
+
+**Why a blend, not a feature.** There's no ADS-B in the 10 training months,
+so a feature would be null for every training row. The blend is instead
+`final = pred + w_tier * (adsb_taxi - lag_airport - pred)` on appear/dwell
+rows, fit on one holdout month and scored on the other.
+
+**Result (primary, tier weights, LIRF excluded):** Jul (fit Jan) 319.76 ->
+317.71 (**-2.05**, P(worse)=0.000); Jan (fit Jul) 354.34 -> 350.12
+(**-4.22**, P(worse)=0.000); pooled 335.63 -> 332.56 (**-3.07**, CI
+[-4.28, -2.22]). EDDM -25.7, EHAM -15.6, LEBL -8.9, LSZH -3.7, EDDF -3.6,
+EGLL -0.9, nothing worse. Weights are stable across months (appear
+0.70/0.63, dwell 0.49/0.35).
+
+- **Wide-box check:** old-box and new-box detector outputs are identical on
+  the overlap days.
+- **EDDM ordinary days** (the load-bearing question from §37): 171.7 ->
+  151.2 s excluding its 3 worst days, so the gain isn't a de-icing artefact.
+- **Summer:** July improves on its own; the pre-registered winter-only
+  clauses never came into play.
+
+**Shipped choice.** Per-airport-tier weights beat the primary in both
+directions, by 0.07 s (Jul) and 0.05 s (Jan). The pre-registered rule says
+adopt, so they ship. The margin is noise-sized; the rule is followed rather
+than argued with after the fact.
+
+**LIRF.** The pre-registered H_echo test failed (non-echo ADS-B RMSE 529 s
+vs a 301 s bar), so LIRF is excluded from this blend. But the comparator
+was wrong: the model's RMSE on those same rows is 751 s. Echo rows (ADS-B
+3,118 s, 83% of LIRF's ADS-B squared error) are where the label is SOBT, not
+the physical pushback. The follow-up is a mixture,
+`P(echo)*(T-SOBT) + (1-P(echo))*adsb_c`, with a new pre-registration.
+
+**Coverage limits.** LEMD, LFPG and LTFM have ~0 eligible rows, and LIRF has
+none in July 2026. All the gain comes from the six northern airports plus
+LEBL.
+
+**Before ranking use: a label-free drift check.** Compare
+`adsb_pushback - AOBT_3_flt` per airport and tier, and the tier mix, between
+2025 and 2026 (the receiver network changed). The lag medians are the part
+most exposed to drift.
+
+**Revised plan (2026-09-27; leaderboard 302 vs the top team's ~240):**
+1. Second model family (XGBoost/CatBoost on the same inputs) with a
+   cross-fit non-negative stack, ahead of further feature tests (feature
+   record this session: 1 adopted of ~10 tested).
+2. Drift check, then apply the blend to the ranking set.
+3. LIRF echo mixture (new pre-registration).
+4. Partial-track floor for matched-but-no-stand departures
+   (movement-derived: T - first_seen plus stand-to-first-seen distance / typical
+   speed); extends coverage to LFPG/LEMD.
+
+## 40. LightGBM + CatBoost stack, then ADS-B on top -- leaderboard
+    302 -> 296 -> 277 (2026-09-27)
+
+**Second model family.** XGBoost was dropped: its GPU fit ran out of memory
+on free Colab even after the group-encoding memory fix (`ffde2e1`; a narrow
+frame in `add_group_encodings_oof`, output verified identical, peak memory
+down ~1.8 GB). CatBoost was added as engine `cat` (`_fit_cat`).
+- **Speed:** `max_ctr_complexity=1` (no categorical feature combinations)
+  made it about 12x faster on a T4: 5-6 minutes per fit instead of 70.
+- **Accuracy:** with lr 0.05 it also scored better on the inner validation
+  (flip 493 vs 503).
+- Both changes were recorded as dated amendments before any holdout result
+  (`reports/stack_preregistration.md`).
+- `run(ev_out=...)` now saves the holdout predictions before the long refit,
+  and `PRC_MEMLOG=1` prints memory checkpoints.
+
+**Holdout.** CatBoost alone scored 336.7 (LightGBM 335.6): better at six
+airports, worse at LIRF. The cross-fit NNLS stack gives pooled 333.08
+(-2.55, P(worse)=0.021): Jul -3.65, Jan -1.33 (Jan alone not significant).
+Every airport improves. It was adopted under the pre-registered rule.
+Weights on the full holdout: lgb 0.544, cat 0.468. The ADS-B blend, refit on
+the stacked prediction, still adds -2.09 (Jul) and -4.27 (Jan); stack +
+ADS-B against LightGBM alone is 335.63 -> 329.97.
+
+**Drift check (`tests/adsb_drift_test.py`, label-free, against
+AOBT_3_flt).**
+- The spread of ADS-B timing and the tier mix are stable 2025 -> 2026.
+- The AOBT_3 yardstick itself swings +-40-80 s month to month even where the
+  truth-based lag is stable (EDDM appear: +63 vs -17 against AOBT_3, +42
+  vs +44 against truth). So most year-over-year shifts are within its noise.
+- The exception is EGLL: all four cells shift by -39 to -80 s. That's a
+  possible receiver change; it's left uncorrected, because a correction
+  can't be validated.
+- Coverage rises a lot in 2026 (EGLL Jul 1% -> 75%, EDDM Jul 26% -> 74%).
+
+**Submissions (`src/post/stack_submit.py`; blend logic in
+`src/post/adsb_blend.py`, verified to reproduce the test exactly).**
+- v15 = stack alone: **296**.
+- v16 = stack + ADS-B: **277**. The blend changes 94,529 of 344,841
+  ranking rows (27.4%); LIRF is excluded, EGLL and LEMD are as fitted.
+- The ADS-B gain on the leaderboard (-19) is about 3x the coverage-scaled
+  projection (-6). That's not yet understood: 2026 errors may concentrate
+  where coverage grew, or the leaderboard may score a subset with a
+  different mix.
+
+**Next.** ADS-B is the strongest lever by far, so extending its coverage
+comes first:
+1. Partial-track floor for matched departures with no stand fix (LFPG,
+   LEMD, and missed rows elsewhere).
+2. The LIRF echo mixture (new pre-registration).
+3. EGLL re-check.
+
+The top team is at ~240.

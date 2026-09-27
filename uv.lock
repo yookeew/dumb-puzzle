@@ -1708,12 +1708,17 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "lightgbm" },
+    { name = "matplotlib" },
     { name = "networkx" },
+    { name = "orjson" },
     { name = "polars" },
     { name = "pyarrow" },
     { name = "pyopensky" },
+    { name = "requests" },
     { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "traffic" },
+    { name = "xplane-airports" },
 ]
 
 [package.dev-dependencies]
@@ -1724,12 +1729,17 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "lightgbm", specifier = ">=4.7" },
+    { name = "matplotlib", specifier = ">=3.9" },
     { name = "networkx", specifier = ">=3.6" },
+    { name = "orjson", specifier = ">=3.10" },
     { name = "polars", specifier = ">=1.44" },
     { name = "pyarrow", specifier = ">=25.0" },
     { name = "pyopensky", specifier = ">=2.16" },
+    { name = "requests", specifier = ">=2.32" },
     { name = "scikit-learn", specifier = ">=1.9" },
+    { name = "scipy", specifier = ">=1.13" },
     { name = "traffic", specifier = ">=2.13" },
+    { name = "xplane-airports", specifier = ">=4.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -2703,6 +2713,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bf/60/bc7a980fc78837d6ef8f5940cca4cadc433364503a4c4d42e2a7a0de3231/widgetsnbextension-4.0.16.tar.gz", hash = "sha256:adeea0ae78f0856ee4945f413299801b82a0a01416303301f39a704282a37b73", size = 1111094, upload-time = "2026-08-18T08:52:55.859Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/34/95/40e17e20046b7bc820d29d09ae84ec157ec8dd6e6f6cd722626292c31b2e/widgetsnbextension-4.0.16-py3-none-any.whl", hash = "sha256:a31a8774885b96fe825462f5d6496166f0c7cae111195b6465c801d230eb5a4e", size = 2225148, upload-time = "2026-08-18T08:52:53.736Z" },
+]
+
+[[package]]
+name = "xplane-airports"
+version = "4.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/b1/087dc15fcd0c7599699f2c224f219d903232c49326275bfc98455b4587ef/xplane_airports-4.0.1.tar.gz", hash = "sha256:93fc579b986879e14897f857839d928358ec8f83a138e32b8236ef22535fb311", size = 31396, upload-time = "2020-12-28T19:58:39.448Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/41/a299d4d9d7ab90afb2336e3b869a7c6290276f6ec522c97f58741889273a/xplane_airports-4.0.1-py3-none-any.whl", hash = "sha256:af038e9182b3c17cd2713c69ec082ba4692ff38a929cbf36eb4221a2edf7b00a", size = 26424, upload-time = "2020-12-28T19:58:37.938Z" },
 ]
 
 [[package]]

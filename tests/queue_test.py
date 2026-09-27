@@ -28,6 +28,8 @@ from pathlib import Path
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from features.build_features import build_features  # noqa: E402
+from features.export_model_inputs import FRAME_COLS, HOLDOUT_MONTHS as _HO, TRAIN_GLOB, blind  # noqa: E402
 from models.fit import HOLDOUT_MONTHS, run  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -35,7 +37,7 @@ from _harness import DEFAULT_TARGET, cluster_bootstrap  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FEAT_DIR = ROOT / "cache" / "features"
-BASE_DIR = ROOT / "cache" / "features_q_base_tmp"
+TREAT_DIR = ROOT / "cache" / "features_q_treat_tmp"
 
 QUEUE_COLS = ["q_ahead", "q_ahead_rwy", "q_push_15m", "q_ahead_mean_wait"]
 
@@ -44,25 +46,39 @@ MODEL_SEED = 42
 BOOT_SEED = 0
 
 
-def _prep(dest: Path, drop: list[str]) -> None:
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    for f in ("train2025.parquet", "holdout_gap2025.parquet"):
-        df = pl.read_parquet(FEAT_DIR / f)
-        df.drop([c for c in drop if c in df.columns]).write_parquet(dest / f)
-    shutil.copy(FEAT_DIR / "labels2025.parquet", dest / "labels2025.parquet")
+def _make_treat_dir() -> None:
+    """Rebuild train2025/holdout_gap2025 from raw data with queue=True on top
+    of the current production flags (weather=True as of S24/S25, atfm=False).
+    Baseline is FEAT_DIR itself -- queue is off there today, so no drop-based
+    simulation is needed (that trick only works when the ambient cache
+    already contains the family under test, which stopped being true once
+    weather became the default and rebuilt the shared cache)."""
+    if TREAT_DIR.exists():
+        shutil.rmtree(TREAT_DIR)
+    TREAT_DIR.mkdir(parents=True)
+
+    frame = pl.read_parquet(TRAIN_GLOB, columns=FRAME_COLS)
+    build_features(blind(frame), priors=None, weather=True, queue=True) \
+        .write_parquet(TREAT_DIR / "train2025.parquet")
+
+    frame_ho = frame.filter(
+        pl.col("MVT_TIME_UTC_mvt").dt.strftime("%Y-%m").is_in(_HO)
+    )
+    build_features(blind(frame_ho), priors=None, weather=True, queue=True) \
+        .write_parquet(TREAT_DIR / "holdout_gap2025.parquet")
+
+    shutil.copy(FEAT_DIR / "labels2025.parquet", TREAT_DIR / "labels2025.parquet")
 
 
 def main(target: str = DEFAULT_TARGET) -> None:
     suffix = f"_{target}" if target != "direct" else ""
-    print(f"=== baseline (queue features dropped), target={target} ===")
-    _prep(BASE_DIR, QUEUE_COLS)
-    _, ev_base = run(engine="lgb", feat_dir=BASE_DIR, name=f"queue_baseline{suffix}",
+    print(f"=== baseline (production cache, queue off), target={target} ===")
+    _, ev_base = run(engine="lgb", feat_dir=FEAT_DIR, name=f"queue_baseline{suffix}",
                      target=target, submit=False, seed=MODEL_SEED)
 
-    print("\n=== treatment (+ realised queue family) ===")
-    _, ev_treat = run(engine="lgb", feat_dir=FEAT_DIR, name=f"queue_treatment{suffix}",
+    print("\n=== treatment (+ realised queue family, rebuilt from raw) ===")
+    _make_treat_dir()
+    _, ev_treat = run(engine="lgb", feat_dir=TREAT_DIR, name=f"queue_treatment{suffix}",
                       target=target, submit=False, seed=MODEL_SEED)
 
     ev = (ev_base.select("MVT_ID_mvt", "taxi", "ym", "ADEP_mvt", "echo_pred",
@@ -71,7 +87,7 @@ def main(target: str = DEFAULT_TARGET) -> None:
                 on="MVT_ID_mvt", how="inner"))
     assert ev.height == ev_base.height == ev_treat.height, "row mismatch"
 
-    extra = pl.read_parquet(FEAT_DIR / "holdout_gap2025.parquet").select(
+    extra = pl.read_parquet(TREAT_DIR / "holdout_gap2025.parquet").select(
         "MVT_ID_mvt", "sched_takeoff_offset", "q_ahead",
         day=pl.col("T").dt.date())
     ev = ev.join(extra, on="MVT_ID_mvt", how="left").with_columns(

@@ -1,0 +1,56 @@
+loading pooled all-2025 features/labels
+pooled train rows=1,740,628  holdout rows=344,419
+[4s] priors/encodings ready
+[127s] echo classifier fit (shared), best_iter=402
+
+[127s] fitting baseline (LABEL_HI=7200)  n_train=1,556,614 n_valid=182,942
+[1374s] baseline (LABEL_HI=7200) done  best_iter=7996
+
+[1553s] fitting raised (LABEL_HI=200000)  n_train=1,556,985 n_valid=183,006
+[2270s] raised (LABEL_HI=200000) done  best_iter=7986
+
+==============================================================================
+Overall + per-airport + per-month
+==============================================================================
+
+baseline (LABEL_HI=7200)  (best_iter=7996)
+  overall RMSE = 342.19s
+    EDDF   rmse=  229.5  n=36,830
+    EDDM   rmse=  189.9  n=27,091
+    EGLL   rmse=  286.7  n=40,210
+    EHAM   rmse=  228.9  n=40,949
+    LEBL   rmse=  230.6  n=28,986
+    LEMD   rmse=  185.5  n=35,328
+    LFPG   rmse=  580.3  n=39,612
+    LIRF   rmse=  652.7  n=26,528
+    LSZH   rmse=  211.9  n=22,346
+    LTFM   rmse=  276.9  n=46,539
+    2025-01: rmse=  362.2
+    2025-07: rmse=  325.2
+
+raised (LABEL_HI=200000)  (best_iter=7986)
+  overall RMSE = 348.16s
+    EDDF   rmse=  232.9  n=36,830
+    EDDM   rmse=  189.6  n=27,091
+    EGLL   rmse=  285.4  n=40,210
+    EHAM   rmse=  235.5  n=40,949
+    LEBL   rmse=  233.7  n=28,986
+    LEMD   rmse=  185.9  n=35,328
+    LFPG   rmse=  578.8  n=39,612
+    LIRF   rmse=  688.9  n=26,528
+    LSZH   rmse=  211.8  n=22,346
+    LTFM   rmse=  276.7  n=46,539
+    2025-01: rmse=  363.1
+    2025-07: rmse=  335.6
+
+==============================================================================
+Paired comparison (cluster bootstrap, (airport,day))
+==============================================================================
+overall: baseline=342.19  raised=348.16  delta=+5.97
+  2025-01: baseline=362.20  raised=363.10  delta=+0.90
+  2025-07: baseline=325.18  raised=335.64  delta=+10.46
+
+cluster bootstrap: paired RMSE delta=+5.97s  95% CI=[+0.19, +12.54]  P(worse)=0.978
+
+LIRF only: baseline=652.65  raised=688.90  delta=+36.25
+LIRF extreme rows (n=3, matches rows-1-3 scale): baseline=29036.69  raised=25347.85  delta=-3688.84

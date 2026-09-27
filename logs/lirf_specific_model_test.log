@@ -1,0 +1,21 @@
+loading cached features (LIRF-only slice)
+LIRF-only train rows=134,176  holdout rows=26,528
+train_mask n=119,172  valid_mask n=14,637
+LIRF-only flip fit done 308s  best_iter=6119
+
+loading pooled production ev (cache/lirf_ceilfix_mixed_ev.parquet) for shared echo_prob / offset / use_prior
+matched rows between pooled ev and LIRF-only holdout: 26,528 (pooled ev has 26,528, LIRF-only holdout has 26,528)
+
+==============================================================================
+Q3 result: LIRF-only regressor vs pooled regressor, SAME echo blend / offset / ceiling
+==============================================================================
+  pooled model, cached production 'pred' column   :   660.6s (sanity check -- should equal the recon below)
+  pooled regressor + shared blend (recomputed)     :   660.6s
+  LIRF-only regressor + SAME shared blend          :   677.9s
+  delta (LIRF-only - pooled)                       :   +17.3s (+2.6%)
+
+  caveat: pooled arm is production v12 (2026-09-17), current production is ~7.6s lower overall from weather+minute_of_day fixes since -- LIRF's own share of that is small (~-7.4s per PROGRESS.md SS26/SS28) and unrelated to pooling vs specialization, the question this test isolates.
+
+  pre-blend raw regressor only:
+    pooled   raw RMSE =   816.2s
+    LIRF-only raw RMSE =   809.1s
