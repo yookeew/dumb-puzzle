@@ -1,12 +1,8 @@
-stack weights (full holdout): {'lgb': np.float64(0.5443), 'cat': np.float64(0.4676)}
-holdout in-sample RMSE: lgb 335.63  stack 332.41
 quality factors: {'appear/good': 1.208, 'appear/poor': 0.745, 'dwell/good': 1.628, 'dwell/poor': 0.639}
-partial: b 243 s/km | w {'near': 0.266, 'far': 0.08} | a {'EDDF': 280, 'EDDM': 174, 'EGLL': 560, 'EHAM': 160, 'LEBL': 262, 'LEMD': 359, 'LSZH': 238} | a_pooled 356
-ADS-B blend: tier w {'appear': 0.66, 'dwell': 0.409} | lags {'EDDF': -31, 'EDDM': -49, 'EGLL': -169, 'EHAM': -22, 'LEBL': -36, 'LEMD': -136, 'LFPG': -39, 'LSZH': -27} | cells {'EDDF/appear': 0.72, 'EDDF/dwell': 0.33, 'EDDM/appear': 0.87, 'EDDM/dwell': 0.57, 'EGLL/appear': 0.81, 'EGLL/dwell': 0.28, 'EHAM/appear': 0.55, 'EHAM/dwell': 0.35, 'LEBL/appear': 0.8, 'LEBL/dwell': 0.44, 'LSZH/appear': 0.52, 'LSZH/dwell': 0.5}
 wrote stack_lgb_cat.parquet  n=344,841  median=970  mean=1047.5  max=112060
-ADS-B blended ranking rows: 94,529 of 344,841 (27.4%); mean shift -27.2s
 wrote stack_lgb_cat_adsb.parquet  n=344,841  median=966  mean=1040.1  max=112060
-partial-track rows: 47,304 (13.7%); mean shift +4.6s; per airport {'EDDF': 4412, 'EDDM': 4864, 'EGLL': 8471, 'EHAM': 4664, 'LEBL': 8349, 'LEMD': 8665, 'LFPG': 220, 'LSZH': 7659}
 wrote stack_lgb_cat_adsb_partial.parquet  n=344,841  median=967  mean=1040.7  max=112060
 quality-modulated blend: rows 94,529; mean |change vs unmodulated| 31.8s; quality mix {'good': 53589, 'poor': 40940}
 wrote stack_lgb_cat_adsbq_partial.parquet  n=344,841  median=968  mean=1043.4  max=112060
+LIRF +24h: p=0.333 (from 18 training-month rows), t0=1210s; ranking segment rows 11 (Jan 3), mean shift +9901s
+wrote stack_lgb_cat_adsbq_partial_lirf24.parquet  n=344,841  median=968  mean=1043.7  max=103910

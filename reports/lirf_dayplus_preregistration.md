@@ -50,3 +50,22 @@ delays, but it under-predicts the +24 h rows by up to ~35,000 s.
 ## Amendments
 
 (none)
+
+## Results (2026-09-27)
+
+Training months: 18 segment rows, 6 of them +24 h, so p = 0.333;
+t0 = 1,210 s. There are 11 holdout segment rows (2 Jan, 9 Jul).
+
+| | base | adjusted |
+|---|---|---|
+| segment SSE, Jan | 7.58e8 | 4.43e8 |
+| segment SSE, Jul | 1.97e9 | 1.37e9 |
+| overall holdout RMSE | 333.08 | **329.04** |
+| Jan / Jul | 353.01 / 316.11 | 350.10 / 311.04 |
+| LIRF | 647.1 | 619.7 |
+
+**ADOPT** (segment SSE falls in both months; overall RMSE falls).
+Sensitivity, for information only: p = 0.25 → 328.86, 0.40 → 329.76.
+With 11 rows this rests on the mechanism; the leaderboard A/B is the
+confirmation. Ranking: 11 segment rows (3 Jan, 8 Jul), mean shift
++9,901 s.

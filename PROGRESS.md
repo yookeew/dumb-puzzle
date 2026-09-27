@@ -3294,3 +3294,37 @@ absolute. Final factors: appear 1.21 / 0.75, dwell 1.63 / 0.64.
 
 **Leaderboard: v19 = 274.25** (v17 275, v18 276). The holdout gain was -0.47,
 so the leaderboard gain is ~1. Current best.
+
+## 44. LFPG/LIRF monster labels; LIRF "+24 h" date bug -- ADOPTED
+    (2026-09-27)
+
+**Where the error is.** LFPG (34.9%) and LIRF (29.7%) carry 65% of all
+holdout squared error; ADS-B work had only touched the remaining ~18%.
+- LFPG: the top 10 rows (0.03%) are 79.7% of its squared error. Without its
+  top 400 rows, LFPG's RMSE is 210.
+- Two LFPG rows (84,240 s and 58,206 s, both easyJet, both NM-unmatched)
+  have a block time on the previous evening. They are NOT the inbound
+  arrival's in-block time: across 2025, label == takeoff - inbound in-block
+  for only 0.006% of rows. They look unpredictable.
+- 89/91 labels > 5 h are NM-unmatched (~7,000x the matched rate).
+
+**LIRF date bug.** All 14 labels in the 24h-10min .. 24h+90min band are
+NM-unmatched (13 LIRF). For 86% of them the block date equals the scheduled
+date, and block + 1 day is a median 15 min before takeoff. The feed stamps
+the real pushback clock time onto the scheduled date, so the label = real
+taxi + 86,400 s. Among LIRF NM-unmatched rows delayed >= 12 h in the
+training months, the labels are: echo 12, +24 h 6, normal 0.
+
+**Adjustment** (pre-registered, `reports/lirf_dayplus_preregistration.md`,
+408d348). On LIRF & NM-unmatched & T-SOBT >= 12 h:
+`new = (1-p) pred + p (86400 + t0)`, with p = 0.333 and t0 = 1,210 s, both
+from the 10 training months only.
+
+**Holdout:** 11 segment rows. Overall **333.08 -> 329.04 (-4.0)**; Jan
+-2.9, Jul -5.1; LIRF 647 -> 620. Segment SSE falls in both months.
+Adopted. It rests on the mechanism, since 11 rows can't give statistical
+certainty.
+
+**v20 candidate** (`src/post/lirf_dayplus.py`,
+`stack_lgb_cat_adsbq_partial_lirf24.parquet`) changes 11 ranking rows
+(3 Jan, 8 Jul) by +9,900 s mean.
