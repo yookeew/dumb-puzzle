@@ -3291,3 +3291,6 @@ poor x0.62-0.75); all four groups improve. The production code
 **v19 candidate:** `stack_lgb_cat_adsbq_partial.parquet`. Rebuilt v17 is
 byte-identical to the uploaded v17. v19 changes 93,344 rows by 32 s mean
 absolute. Final factors: appear 1.21 / 0.75, dwell 1.63 / 0.64.
+
+**Leaderboard: v19 = 274.25** (v17 275, v18 276). The holdout gain was -0.47,
+so the leaderboard gain is ~1. Current best.
