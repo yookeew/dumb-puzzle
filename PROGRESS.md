@@ -3328,3 +3328,71 @@ certainty.
 **v20 candidate** (`src/post/lirf_dayplus.py`,
 `stack_lgb_cat_adsbq_partial_lirf24.parquet`) changes 11 ranking rows
 (3 Jan, 8 Jul) by +9,900 s mean.
+
+## 45. Status and next steps (2026-09-28)
+
+**Leaderboard history (lower is better):**
+
+| version | what | score |
+|---|---|---|
+| (pre-§40) | LightGBM mixed | 302 |
+| v15 | + CatBoost stack | 296 |
+| v16 | + ADS-B pushback blend | 277 |
+| v17 | + partial-track estimate | 275 |
+| v18 | v17 with EGLL lag shifted (probe, rejected) | 276 |
+| v19 | v17 + quality-modulated ADS-B weights | **274.25** (current best) |
+| v20 | v19 + LIRF "+24 h" adjustment | pending: submit 2026-09-28 |
+
+Top team: ~224. Freeze is **2026-10-04** (CLAUDE.md), so ~6 days remain.
+
+**Submit first:** `data/submissions/stack_lgb_cat_adsbq_partial_lirf24.parquet`
+as `smart-jigsaw_v20`. It differs from v19 on only 11 LIRF rows (+9,900 s
+mean), so the score change is a clean read of the §44 mechanism.
+- Better: keep it, and extend the same idea (step 1 below).
+- Worse: the date bug didn't carry into 2026. Revert to v19 and drop
+  step 1.
+
+**Where the error is (holdout, current pipeline):** LFPG 34.9%, LIRF 29.7%,
+LTFM 8.8%, EGLL 8.7%, the other six 17.8%. A few monster labels dominate
+LFPG and LIRF. Feature and ADS-B work on the "easy" airports now buys ~1
+point per step; label-structure work on LIRF/LFPG buys much more.
+
+**Next, in priority order:**
+
+1. **Generalise §44 to all LIRF NM-unmatched delay bands** (only if v20
+   helps).
+   - For LIRF NM-unmatched rows the label is one of three kinds: schedule
+     echo (T - SOBT), +24 h bug, or normal taxi. Their mix depends strongly
+     on the delay (T - SOBT): e.g. 3-6 h is echo 82 / +24 h 1 / normal 34.
+   - The model currently mis-mixes them. In the holdout's 3 h band, rows
+     with normal ~1,000 s labels get 4,000-8,000 s predictions, because the
+     echo classifier says echo.
+   - Replace it, for this population only, with the squared-loss-optimal
+     mixture per delay band:
+     `pred = p_echo * offset + p_24 * (86400 + t0) + p_norm * model_normal`,
+     with the p's estimated on the 10 training months. Pre-register; holdout
+     check; leaderboard A/B.
+2. **LTFM and EGLL error anatomy** (8.8% + 8.7%, never examined). Same
+   recipe as LFPG: top-k share of squared error, label types,
+   NM-unmatched, any recording pattern. Cheap (no training). It only pays
+   off if there's a pattern like the LIRF bug; LFPG's two monsters had
+   none.
+3. **More CatBoost rounds** (fits were still improving at 8,000; ~6
+   min/fit on a T4 with `max_ctr_complexity=1`). Rerun on Colab with more
+   rounds, re-test the stack (`tests/stack_test.py`), rebuild. Expect ~1
+   point.
+4. **Freeze-week work (don't leave it to the last day):**
+   - `REPRODUCE.md`: the end-to-end path. Data fetch, stands, the ADS-B
+     fetch on Colab, then normalise, detector, features, the lgb (local) and
+     cat (Colab) runs, and `src/post/stack_submit.py`.
+   - `DATA_SOURCES.md` check: every external source used by the final
+     submission (Gateway stands/runways GPLv2, adsb.lol ODbL, METAR,
+     EUROCONTROL) has a row.
+   - Make the repo public on GitHub under GPLv3, as the rules require.
+   - JOAS paper draft. The framing from CLAUDE.md still holds (post-ops
+     reconstruction), plus the ADS-B stand-appearance detector and the
+     label-recording findings (echo, +24 h bug) as contributions.
+
+**Not worth more time:** OSM routed distance (§38: straight-line geometry
+added nothing); a LIRF ADS-B mixture (§42: LIRF's problem is labels, not
+timing); lag re-anchoring from AOBT_3 (v18); XGBoost on free Colab (OOM).
