@@ -112,8 +112,8 @@ VALID_MONTH = "2025-06"
 CLF_ROUNDS = 5000
 CLF_ETA = 0.02
 CLF_EARLY_STOP = 150
-CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic"}
-CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss"}
+CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic", "cat": "Logloss"}
+CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss", "cat": "Logloss"}
 
 
 # --------------------------------------------------------------------- engines
@@ -181,7 +181,53 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     return m, predict, best
 
 
-ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb}
+def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
+             objective="RMSE", alpha=None, metric="RMSE"):
+    """CatBoost: the decorrelated second family (ordered boosting, target-statistic
+    encoding of the categoricals instead of LightGBM/XGBoost's partition splits).
+    GPU when available (Colab T4), else CPU -- CPU on the full 2M-row frame is
+    hours, not minutes, so run this on Colab."""
+    from catboost import CatBoostClassifier, CatBoostRegressor, Pool
+    from catboost.utils import get_gpu_device_count
+
+    def pool(A, label=None):
+        A = A.copy()
+        for c in cats:  # pandas category over int codes -> plain ints for CatBoost
+            A[c] = A[c].astype("int32")
+        return Pool(A, label=label, cat_features=cats)
+
+    is_clf = objective == "Logloss"
+    loss = objective if alpha is None or objective != "Huber" else f"Huber:delta={alpha}"
+    params = dict(loss_function=loss, eval_metric=metric, learning_rate=eta, iterations=rounds,
+                  depth=8, border_count=127, random_seed=seed, allow_writing_files=False,
+                  verbose=500)
+    dtrain = pool(X, y)
+    fit_kw = {}
+    if valid is not None and es:
+        fit_kw = dict(eval_set=pool(valid[0], valid[1]), early_stopping_rounds=es,
+                      use_best_model=True)
+    cls = CatBoostClassifier if is_clf else CatBoostRegressor
+    m = None
+    if get_gpu_device_count() > 0:
+        try:
+            m = cls(**params, task_type="GPU")
+            m.fit(dtrain, **fit_kw)
+        except Exception as e:  # a loss/metric without GPU support -> CPU
+            print(f"catboost GPU failed ({e}); falling back to CPU")
+            m = None
+    if m is None:
+        m = cls(**params, task_type="CPU", thread_count=-1)
+        m.fit(dtrain, **fit_kw)
+    best = (m.get_best_iteration() or rounds - 1) + 1
+
+    def predict(M, A):
+        P = pool(A)
+        return M.predict_proba(P)[:, 1] if is_clf else M.predict(P)
+
+    return m, predict, best
+
+
+ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb, "cat": _fit_cat}
 
 
 def _reconstruct_taxi(offset: np.ndarray, taxi_model_raw: np.ndarray,
@@ -427,8 +473,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 # capped instead of growing with residual size, so a handful of huge-residual
 # rows (LIRF, the d9 tail) can no longer pull splits toward fitting them exactly.
 LOSS_OBJECTIVE = {
-    "l2": {"lgb": "regression", "xgb": "reg:squarederror"},
-    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror"},
+    "l2": {"lgb": "regression", "xgb": "reg:squarederror", "cat": "RMSE"},
+    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror", "cat": "Huber"},
 }
 # alpha=800 beat plain L2 on the gap-realistic holdout (303.1s vs 309.2s overall,
 # improved on 6/10 airports incl. LIRF, tail d9 667.7 vs 677.0s, no airport
