@@ -3059,3 +3059,88 @@ and 2026 pull running on Colab (2026-09-26, ~5 min/day Jan, ~10-12
 min/day Jul). Then: detector over all days, holdout evaluation as a model
 feature (tier + coverage flag), EDDM Jul-2025 excluded by necessity.
 Data licence: ODbL 1.0 (adsb.lol), DATA_SOURCES.md row added.
+
+## 38. Stand/runway geometry as model features -- REJECTED (2026-09-27)
+
+Family 8 (`src/features/geometry.py`, `build_features(geometry=...)`, off by
+default): stand position (metres from the airport's mean stand) and the
+straight-line distance from stand to the departure-runway threshold, from
+Gateway apt.dat (`data/external/runways.csv`, 72 thresholds; `RUNWAY_mvt`
+names match the apt.dat ends exactly). The distance is physically real
+(Spearman with taxi 0.28-0.61 by airport; resolves for 96% of rows).
+Pre-registered test `tests/stand_geometry_test.py` (log
+`logs/stand_geometry_test.log`):
+
+- overall 335.6 -> 336.2 s, **+0.59 s**, CI [+0.08, +1.20], P(worse)=0.990
+- Jan -0.13, **Jul +1.23** (fails the both-months rule)
+- the loss is almost all LIRF (+5.2 s); 7 of the other 9 airports move
+  -0.1 to -0.5 s
+- mechanism check fails: rare (stand, runway) pairs (<50 training
+  departures) got worse too (+0.46 vs +0.63), when geometry should help
+  exactly there
+
+`STAND_mvt`/`RUNWAY_mvt` categoricals plus the taxi priors already carry the
+geometry. This also lowers the expected value of OSM routed distance
+("Future step B") unless routing captures something straight-line doesn't.
+Stands stay in use for the ADS-B detector only.
+
+## 39. ADS-B pushback blend -- ADOPTED, pre-registered, both months
+    (2026-09-27)
+
+124 days (Jan+Jul 2025 and 2026) pulled with `src/ingest/fetch_adsb.py` on
+Colab, all `ok`, 0 bad members, no cross-day contamination
+(`external-data/adsb-fetch/manifest.csv`). Detector run over 126 days
+(`logs/adsb_pushback_all.log`). The evaluation was pre-registered in
+`reports/adsb_blend_preregistration.md` (committed d3ed616 before any
+result); results are appended there. Script `tests/adsb_blend_test.py`,
+log `logs/adsb_blend_test.log`.
+
+**Why a blend, not a feature.** There's no ADS-B in the 10 training months,
+so a feature would be null for every training row. The blend is instead
+`final = pred + w_tier * (adsb_taxi - lag_airport - pred)` on appear/dwell
+rows, fit on one holdout month and scored on the other.
+
+**Result (primary, tier weights, LIRF excluded):** Jul (fit Jan) 319.76 ->
+317.71 (**-2.05**, P(worse)=0.000); Jan (fit Jul) 354.34 -> 350.12
+(**-4.22**, P(worse)=0.000); pooled 335.63 -> 332.56 (**-3.07**, CI
+[-4.28, -2.22]). EDDM -25.7, EHAM -15.6, LEBL -8.9, LSZH -3.7, EDDF -3.6,
+EGLL -0.9, nothing worse. Weights are stable across months (appear
+0.70/0.63, dwell 0.49/0.35).
+
+- **Wide-box check:** old-box and new-box detector outputs are identical on
+  the overlap days.
+- **EDDM ordinary days** (the load-bearing question from §37): 171.7 ->
+  151.2 s excluding its 3 worst days, so the gain isn't a de-icing artefact.
+- **Summer:** July improves on its own; the pre-registered winter-only
+  clauses never came into play.
+
+**Shipped choice.** Per-airport-tier weights beat the primary in both
+directions, by 0.07 s (Jul) and 0.05 s (Jan). The pre-registered rule says
+adopt, so they ship. The margin is noise-sized; the rule is followed rather
+than argued with after the fact.
+
+**LIRF.** The pre-registered H_echo test failed (non-echo ADS-B RMSE 529 s
+vs a 301 s bar), so LIRF is excluded from this blend. But the comparator
+was wrong: the model's RMSE on those same rows is 751 s. Echo rows (ADS-B
+3,118 s, 83% of LIRF's ADS-B squared error) are where the label is SOBT, not
+the physical pushback. The follow-up is a mixture,
+`P(echo)*(T-SOBT) + (1-P(echo))*adsb_c`, with a new pre-registration.
+
+**Coverage limits.** LEMD, LFPG and LTFM have ~0 eligible rows, and LIRF has
+none in July 2026. All the gain comes from the six northern airports plus
+LEBL.
+
+**Before ranking use: a label-free drift check.** Compare
+`adsb_pushback - AOBT_3_flt` per airport and tier, and the tier mix, between
+2025 and 2026 (the receiver network changed). The lag medians are the part
+most exposed to drift.
+
+**Revised plan (2026-09-27; leaderboard 302 vs the top team's ~240):**
+1. Second model family (XGBoost/CatBoost on the same inputs) with a
+   cross-fit non-negative stack, ahead of further feature tests (feature
+   record this session: 1 adopted of ~10 tested).
+2. Drift check, then apply the blend to the ranking set.
+3. LIRF echo mixture (new pre-registration).
+4. Partial-track floor for matched-but-no-stand departures
+   (movement-derived: T - first_seen plus stand-to-first-seen distance / typical
+   speed); extends coverage to LFPG/LEMD.

@@ -43,6 +43,7 @@ import polars as pl
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from features.atfm import load_atfm_daily, panel_icaos  # noqa: E402
 from features.weather import load_metar_hourly  # noqa: E402
+from features.geometry import geometry_context  # noqa: E402
 from features.encode import (  # noqa: E402,F401
     CAT_COLS,
     apply_priors,
@@ -433,6 +434,7 @@ def _weather_context(frame: pl.DataFrame) -> pl.DataFrame:
 def build_features(
     df: pl.DataFrame, priors: dict[str, pl.DataFrame] | None = None,
     atfm: bool = False, queue: bool = False, weather: bool = False,
+    geometry: bool = False,
 ) -> pl.DataFrame:
     """One row per departure. `priors` from fit_priors() on the training split.
 
@@ -458,6 +460,12 @@ def build_features(
     daily -- the (airport, day, hour) oracle ceiling is ~10.82s vs ATFM's
     ~2.07s daily cap (tests/metar_ceiling.py, PROGRESS.md S20/S24). Requires
     the CSVs under external-data/metar/ (src/ingest/fetch_metar_data.py).
+
+    `geometry` enables family 8 (stand/runway geometry from X-Plane Gateway
+    apt.dat: stand position, straight-line stand -> departure-threshold
+    distance; features/geometry.py). Off by default pending the
+    pre-registered test (tests/stand_geometry_test.py). Requires
+    data/external/{stands,runways}.csv (src/ingest/fetch_stands.py).
     """
     base = _runway_time(df).filter(pl.col("PHASE_mvt") == "DEP")
 
@@ -472,7 +480,10 @@ def build_features(
         month=pl.col("T").dt.month(),
         doy=pl.col("T").dt.ordinal_day(),
         is_weekend=(pl.col("T").dt.weekday() >= 6).cast(pl.Int8),
-        minute_of_day=pl.col("T").dt.hour() * 60 + pl.col("T").dt.minute(),
+        # cast before *60: dt.hour()/dt.minute() are Int8, and Int8*60 overflows
+        # (wraps) for every hour >= 3 -- this was silently corrupting the column,
+        # see PROGRESS.md S27.
+        minute_of_day=pl.col("T").dt.hour().cast(pl.Int16) * 60 + pl.col("T").dt.minute(),
         sched_takeoff_offset=(pl.col("T") - pl.col("SOBT")).dt.total_seconds(),
     )
 
@@ -483,6 +494,8 @@ def build_features(
         feats = feats.join(_realised_queue(df), on="MVT_ID_mvt", how="left")
     if atfm:
         feats = feats.join(_atfm_context(df), on="MVT_ID_mvt", how="left")
+    if geometry:
+        feats = feats.join(geometry_context(feats), on="MVT_ID_mvt", how="left")
     if weather:
         feats = feats.join(_weather_context(df), on="MVT_ID_mvt", how="left")
 

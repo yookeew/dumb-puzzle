@@ -106,4 +106,42 @@ times. Material divergence blocks the evaluation until explained.
 
 ## Amendments
 
-(none)
+(none, the rules above were applied unchanged)
+
+## Results (2026-09-27, `tests/adsb_blend_test.py`, log `logs/adsb_blend_test.log`)
+
+**Data check: passed.** Old and new box detector outputs are identical on all
+overlap days (same rows, same pushback times, no tier changes).
+
+**Primary blend: ADOPT.**
+
+| | model | blend | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul 2025 (fit Jan) | 319.76 | 317.71 | −2.05 | [−2.79, −1.35] | 0.000 |
+| B: Jan 2025 (fit Jul) | 354.34 | 350.12 | −4.22 | [−7.40, −2.52] | 0.000 |
+| pooled | 335.63 | 332.56 | −3.07 | [−4.28, −2.22] | 0.000 |
+
+- Weights: appear 0.696 (fit Jan) / 0.628 (fit Jul); dwell 0.494 / 0.350.
+- Lags (adsb − taxi): −11 to −52 s at most airports; EGLL −170 s; LEMD
+  −136 s (fit on Jul only).
+- Per airport: EDDM −25.7, EHAM −15.6, LEBL −8.9, LSZH −3.7, EDDF −3.6,
+  EGLL −0.9; no airport worse.
+- Eligible rows (58,883): appear 176 → 121 s, dwell 184 → 158 s.
+
+**Secondary (per-airport-tier weights):** beats the primary in both
+directions, as the rule requires, but by 0.07 s (Jul) and 0.05 s (Jan). The
+rule says adopt. The shipped choice is recorded in PROGRESS.md §39.
+
+**Summer question:** not triggered, because July improves on its own. W1
+(−4.25 s, P(worse) = 0.000) and W2 (−2.99 s with the best 3 January days
+removed) would have passed.
+
+**EDDM:** the worst 3 model-error days are 385.5 → 300.6 s; all other days
+are 171.7 → 151.2 s. The gain holds on ordinary days.
+
+**LIRF: H_echo FAILS, so LIRF stays excluded under this pre-registration.**
+Non-echo rows have ADS-B RMSE 529 s (bar: 1.5 × 201 = 301 s); echo rows
+have 3,118 s and carry 83% of LIRF's ADS-B squared error. Note, not a rule
+change: on the same non-echo rows the model's RMSE is 751 s, so ADS-B beats
+the model there. The comparator was the wrong one. The follow-up (an
+echo-probability mixture) is pre-registered separately.
