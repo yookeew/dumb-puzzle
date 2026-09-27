@@ -23,7 +23,12 @@ Output cache/adsb_pushback/day=YYYY-MM-DD.parquet, one row per DEP movement
 of that day at every challenge airport:
   MVT_ID_mvt, airport, adsb_day_coverage (airport had >= 20 aircraft with
   surface points that day), adsb_matched, adsb_tier, adsb_pushback_ts (epoch s),
-  adsb_takeoff_gap_s (ADS-B takeoff - MVT_TIME), adsb_n_pts (samples in run).
+  adsb_takeoff_gap_s (ADS-B takeoff - MVT_TIME), adsb_n_pts (samples in run),
+  and for every matched run (used by the partial-track estimate):
+  adsb_first_ts (first surface sample of the run), adsb_first_gs (its speed, kt),
+  adsb_first_own_m (its distance to the own stand), adsb_min_own_m (closest
+  approach to the own stand over the run); the two distances are null when
+  the stand has no coordinates.
 
 Run:  .venv/Scripts/python.exe src/link/adsb_pushback.py
 """
@@ -59,7 +64,9 @@ MIN_COVERAGE_AIRCRAFT = 20
 
 SCHEMA = {"MVT_ID_mvt": pl.Int64, "airport": pl.Utf8, "adsb_day_coverage": pl.Boolean,
           "adsb_matched": pl.Boolean, "adsb_tier": pl.Utf8, "adsb_pushback_ts": pl.Float64,
-          "adsb_takeoff_gap_s": pl.Float64, "adsb_n_pts": pl.Int64}
+          "adsb_takeoff_gap_s": pl.Float64, "adsb_n_pts": pl.Int64,
+          "adsb_first_ts": pl.Float64, "adsb_first_gs": pl.Float64,
+          "adsb_first_own_m": pl.Float64, "adsb_min_own_m": pl.Float64}
 
 
 def to_xy(lat, lon, lat0):
@@ -120,7 +127,9 @@ def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
         base = {"airport": ap, "adsb_day_coverage": cov.get(ap, 0) >= MIN_COVERAGE_AIRCRAFT}
         res = {r["MVT_ID_mvt"]: dict(MVT_ID_mvt=r["MVT_ID_mvt"], **base, adsb_matched=False,
                                      adsb_tier=None, adsb_pushback_ts=None,
-                                     adsb_takeoff_gap_s=None, adsb_n_pts=None) for r in recs}
+                                     adsb_takeoff_gap_s=None, adsb_n_pts=None,
+                                     adsb_first_ts=None, adsb_first_gs=None,
+                                     adsb_first_own_m=None, adsb_min_own_m=None) for r in recs}
         sub = adsb.filter(pl.col("airport") == ap)
         ap_pos = pos.filter(pl.col("airport") == ap)
         if sub.height and ap_pos.height:
@@ -157,8 +166,11 @@ def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
                     ts, gs, _, to = runs[ri]
                     row = res[mid]
                     row.update(adsb_matched=True, adsb_takeoff_gap_s=float(to - mts),
-                               adsb_n_pts=len(ts))
+                               adsb_n_pts=len(ts), adsb_first_ts=float(ts[0]),
+                               adsb_first_gs=float(gs[0]))
                     if d_own is not None:
+                        row.update(adsb_first_own_m=float(d_own[0]),
+                                   adsb_min_own_m=float(d_own.min()))
                         pb, tier = pushback(ts, gs, d_own)
                         if tier is not None:
                             row.update(adsb_tier=tier, adsb_pushback_ts=float(pb))
