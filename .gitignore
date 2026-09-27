@@ -30,3 +30,4 @@ Thumbs.db
 # from the raw extracts in external-data/adsb/, which are also not committed)
 data/external/adsb/
 external-data/adsb/
+external-data/adsb-fetch/
