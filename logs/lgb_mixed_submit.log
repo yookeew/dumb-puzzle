@@ -1,0 +1,9 @@
+holdout fit 1695s  best_iter=7996  loss=huber  target=flip
+holdout fit 2439s  best_iter=3181  loss=huber  target=direct
+echo clf fit 2629s  best_iter=402  base_rate=0.055
+echo clf holdout  precision=0.697  recall=0.096  n_true_echo=17349  n_pred_echo=2396
+OVERALL RMSE 335.6 s  (n=344,339)
+  EDDF:191  EDDM:187  EGLL:289  EHAM:200  LEBL:224  LEMD:180  LFPG:579  LIRF:653  LSZH:210  LTFM:268
+  2025-01:354  2025-07:320
+  False:1904  True:240
+  False:315  True:1415
