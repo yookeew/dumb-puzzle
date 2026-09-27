@@ -198,9 +198,12 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 
     is_clf = objective == "Logloss"
     loss = objective if alpha is None or objective != "Huber" else f"Huber:delta={alpha}"
+    # max_ctr_complexity=1: no categorical feature combinations. With 14
+    # categoricals (several with thousands of levels) the default combination
+    # search made each GPU iteration ~0.5 s on the 1.7M-row fit (~70 min/fit).
     params = dict(loss_function=loss, eval_metric=metric, learning_rate=eta, iterations=rounds,
-                  depth=8, border_count=127, random_seed=seed, allow_writing_files=False,
-                  verbose=500)
+                  depth=8, border_count=127, max_ctr_complexity=1, random_seed=seed,
+                  allow_writing_files=False, verbose=500)
     dtrain = pool(X, y)
     fit_kw = {}
     if valid is not None and es:
@@ -208,7 +211,10 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
                       use_best_model=True)
     cls = CatBoostClassifier if is_clf else CatBoostRegressor
     m = None
-    if get_gpu_device_count() > 0:
+    n_gpu = get_gpu_device_count()
+    print(f"catboost: {'GPU' if n_gpu > 0 else 'CPU (no GPU visible)'}  "
+          f"loss={loss}  lr={eta}  rounds={rounds}", flush=True)
+    if n_gpu > 0:
         try:
             m = cls(**params, task_type="GPU")
             m.fit(dtrain, **fit_kw)
@@ -502,7 +508,7 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
         loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
-        target: str = "flip", seed: int = 42):
+        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None):
     """target="flip" fits the regressor on pushback delay `d` and reconstructs
     taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
     itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
@@ -639,6 +645,10 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         .filter(pl.col("taxi") >= 0)
     )
     _report(ev)
+    if ev_out is not None:  # persist the holdout predictions before the long refit phase
+        Path(ev_out).parent.mkdir(parents=True, exist_ok=True)
+        ev.write_parquet(ev_out)
+        print(f"wrote holdout predictions -> {ev_out}", flush=True)
 
     best_iter_report = "/".join(f"{t}={fits[t][2]}" for t in targets_to_fit)
     if not submit:

@@ -62,3 +62,13 @@ stack is therefore **`lgb + cat`**. XGBoost isn't run, so there are no
 come from the existing local cache (`prod_mixed_holdout_ev.parquet`); its
 submission comes from a local `run(engine="lgb", target="mixed",
 submit=True)`.
+
+**2026-09-27 — CatBoost settings changed, before any CatBoost holdout result
+existed.** The first CatBoost run on a T4 took about 70 minutes per fit
+(~0.5 s per iteration), and its holdout predictions would only have been
+written after a ~5-hour refit. It was stopped after one inner fit; only
+June inner-validation values had been seen, no holdout score. New settings:
+`max_ctr_complexity=1` (no categorical feature combinations) and learning
+rate 0.05 for the CatBoost regressors (`run(eta=0.05)`). Everything else is
+unchanged. The run is holdout-only first (`submit=False`); the submission
+refit happens only if the stack is adopted.
