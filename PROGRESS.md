@@ -3258,3 +3258,10 @@ tested on the leaderboard directly.
   (`stack_lgb_cat_adsb_partial_lagshift.parquet`).
 - It differs from v17 only on the 19,547 EGLL blended rows (-31 s mean).
 - Submitted as v18. Score pending.
+
+**EGLL probe result: v18 = 276 (v17 275).** Shifting EGLL's 2026 lag by the
+AOBT_3-derived +59 s made it worse. The AOBT_3 yardstick's apparent EGLL
+drift was not real (or not in that direction), consistent with its own
++-40-80 s month-to-month noise. The 2025-fitted lag stays, and v17 remains
+the base. Also, a 31 s mean shift on 19.5k rows moved the leaderboard by ~1
+point, so leaderboard A/B probes are sensitive enough to be informative.
