@@ -55,15 +55,25 @@ TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 RERUN_EV = EVAL / "cat_mixed_rerun_holdout_ev.parquet"
 RANK_IN = EVAL / "cat_mixed_rank.parquet"
 RERUN_TOL_RMS = 1.0
+# fitted correctors are cached so a missing ranking file doesn't cost the ~20 min of fits
+M10_PATH = ROOT / "cache" / "oof" / "corrector_v2_m10.txt"
+M12_PATH = ROOT / "cache" / "oof" / "corrector_v2_m12.txt"
 
 
-def fit_fixed(X, y, rounds: int):
+def fit_fixed(X, y, rounds: int, cache: Path | None = None):
     import lightgbm as lgb
+
+    if cache is not None and cache.exists():
+        print(f"loading cached corrector {cache}")
+        return lgb.Booster(model_file=str(cache))
 
     params = dict(v1.CORR_PARAMS, objective="huber", alpha=v2.HUBER_ALPHA)
     cats = [c for c in X.columns if str(X[c].dtype) == "category"]
-    return lgb.train(params, lgb.Dataset(X, label=y, categorical_feature=cats, free_raw_data=False),
-                     num_boost_round=rounds)
+    m = lgb.train(params, lgb.Dataset(X, label=y, categorical_feature=cats, free_raw_data=False),
+                  num_boost_round=rounds)
+    if cache is not None:
+        m.save_model(str(cache))
+    return m
 
 
 def add_extra(X, frame: pl.DataFrame) -> None:
@@ -115,7 +125,7 @@ def main() -> None:
         (pl.col("taxi") >= 0) & (pl.col("pred") <= v2.PRED_MAX))
     X10 = Xtr_all.iloc[tr10["_i"].to_numpy()].reset_index(drop=True)
     add_extra(X10, tr10)
-    m10 = fit_fixed(X10, tr10["taxi"].to_numpy() - tr10["pred"].to_numpy(), rounds)
+    m10 = fit_fixed(X10, tr10["taxi"].to_numpy() - tr10["pred"].to_numpy(), rounds, M10_PATH)
     del X10
     ho_g = ho.join(nmu_ho, on="MVT_ID_mvt", how="left")
     Xho = Xho_all.iloc[ho_g["_i"].to_numpy()].reset_index(drop=True)
@@ -153,8 +163,10 @@ def main() -> None:
                           ho12["taxi"].to_numpy() - ho12["pred"].to_numpy()])
     del Xa, Xb, Xtr_all, Xho_all
     print(f"ranking corrector training rows {len(y12):,} ({tr12.height:,} OOF + {ho12.height:,} holdout)")
-    m12 = fit_fixed(X12, y12, rounds)
+    m12 = fit_fixed(X12, y12, rounds, M12_PATH)
     del X12
+    if not RANK_IN.exists():
+        raise SystemExit(f"{RANK_IN} not found; correctors are cached, rerun once it is in place")
 
     # ---- ranking inputs: priors / group encodings as run()'s all-2025 refit builds them
     feats = pl.read_parquet(v1.FEAT / "train2025.parquet")

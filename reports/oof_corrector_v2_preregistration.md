@@ -152,3 +152,43 @@ All three clauses hold, so the gate passes and v21 gets built.
   rounds). The cap was fixed in advance, so it stays.
 - Caveat, as stated up front: v2 was designed after seeing v1 on this
   holdout. The leaderboard A/B (v21) is the final test.
+
+## v21 build log
+
+**2026-09-28 — CatBoost rerun vs gate baseline (pre-registered 1 s rule).**
+The rerun's holdout predictions differ from `cat_mixed_holdout_ev.parquet`
+by 27.1 s RMS (max 1,171 s) on all 344,339 rows; RMSE 337.05 vs 337.48.
+CatBoost's GPU fit is not deterministic. Per the rule, the rerun's holdout
+and ranking outputs are used throughout v21, with no re-gating. The corrector
+fit on OOF rows only (`m10`) doesn't depend on this choice; the 12-month
+ranking corrector includes the rerun's holdout rows.
+
+Note: the gate baseline file (337.48, stack weights with lgb 0.570 / 0.442)
+is itself not the CatBoost run inside v19 (336.72, weights 0.544 / 0.468,
+§40). So v21 differs from v19 in the CatBoost run as well as the corrector.
+A local-only control, "v19 pipeline with the rerun's uncorrected CatBoost",
+is built for diagnosis; it doesn't change the leaderboard rule.
+
+**2026-09-28 — v21 built** (`logs/corrector_v2_build.log`,
+`logs/stack_submit_v21.log`, `logs/stack_submit_v21_control.log`).
+- **The corrector reproduces on the rerun's CatBoost:** holdout trimmed
+  273.41 -> 269.93 (-3.48), full 337.05 -> 334.11 (-2.94), in-sample for
+  the 10-month corrector as in the gate.
+- **Ranking corrector:** refit on 2,084,303 rows (1,740,054 OOF + 344,249
+  holdout), 5,500 rounds. Applied to 99.97% of ranking rows: mean shift
+  -3.2 s, mean |shift| 36.8 s.
+- **Stack weights:** lgb 0.459 / catcorr 0.555 (the control's are 0.556 /
+  0.456). In-sample holdout stack RMSE 330.05 (control 332.52). The ADS-B
+  parameters are essentially unchanged.
+- **Row-level differences** (ranking, 344,841 rows):
+  - v21 vs v19: 93.4% of rows changed, mean +0.07 s, mean |.| 17.7 s,
+    RMS 40.0 s.
+  - control vs v19: mean |.| 4.7 s, RMS 9.8 s.
+  - v21 vs control: mean |.| 16.7 s, RMS 38.6 s.
+  - So the corrector is most of the difference from v19, and the CatBoost
+    rerun a small part.
+  - Largest per-airport shifts: LIRF -18.4 mean / 38.8 |.|, LTFM +13.5 /
+    30.2, LFPG -7.4 / 20.8.
+- **Submission file:** `data/submissions/stack_lgb_catcorr_adsbq_partial.parquet`
+  = `smart-jigsaw_v21.parquet`. Ids and order match the template, no nulls,
+  min 38 s. Leaderboard score pending; keep iff < 274.25.

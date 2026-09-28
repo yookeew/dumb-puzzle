@@ -1,0 +1,9 @@
+corrector rounds (from the gate's 10-month refit): 5500
+rerun vs gate holdout predictions: n=344,339 of 344,339, RMS diff 27.124 s, max |diff| 1171.1 s
+-> using the RERUN holdout predictions
+holdout: CatBoost trimmed 273.41 -> corrected 269.93; full 337.05 -> 334.11  (gate: 273.80 -> 270.55, 337.48 -> 334.72)
+wrote C:\Users\zhang\smart-jigsaw\cache\eval\catcorr_mixed_holdout_ev.parquet
+ranking corrector training rows 2,084,303 (1,740,054 OOF + 344,249 holdout)
+ranking: corrected 99.97% of rows; mean shift -3.2 s, mean |shift| 36.8 s
+wrote C:\Users\zhang\smart-jigsaw\data\submissions\catcorr_mixed.parquet
+exit=0
