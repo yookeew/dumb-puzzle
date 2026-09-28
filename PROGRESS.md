@@ -3396,3 +3396,53 @@ point per step; label-structure work on LIRF/LFPG buys much more.
 **Not worth more time:** OSM routed distance (§38: straight-line geometry
 added nothing); a LIRF ADS-B mixture (§42: LIRF's problem is labels, not
 timing); lag re-anchoring from AOBT_3 (v18); XGBoost on free Colab (OOM).
+
+## 46. v20 = 278 -> LIRF +24 h adjustment REVERTED; takeaways from the
+    competitors' chat; revised plan (2026-09-28)
+
+**v20 = 278** (v19 274.25). The §44 rule didn't transfer to 2026: the loss
+matches "none of the 11 adjusted rows carried the bug". The stage is
+removed from `stack_submit.py` (`src/post/lirf_dayplus.py` deleted; it's in
+git history). The rebuilt v19 is byte-identical to the uploaded v19.
+**Lesson:** a holdout gain carried by 11 monster rows (-4.0) was the
+opposite of the leaderboard (+3.75). §45 step 1 (generalise to all delay
+bands) is dropped.
+
+**From the competitors' chat (GREKI, top team; Vudueprajacu; piyush7911).
+Confirmed, already doing:** Jan<->Jul validation; drift checks
+(movement-type ADS-B features transfer, receiver-geography ones don't);
+a second tree family averaged with the first; no external data moved the
+no-ADS-B airports (IST/CDG/MAD) for anyone, their gains came from a
+stronger base model.
+
+"For NM-unmatched rows nothing beat a calibrated hedge; rules learned on
+2025 rarely carried over" (GREKI) is exactly v20.
+
+**New and actionable:**
+1. **Out-of-fold corrector.** "A corrector trained on out-of-fold base
+   predictions (folds by month, not by day) did more than new features."
+   A second-stage model on month-wise OOF predictions of the base model,
+   with the base features plus the OOF prediction, learns the base
+   model's systematic errors. It needs OOF predictions for the 10 training
+   months (~10-12 extra fits; CatBoost on the T4 at ~6 min/fit is
+   feasible). The most-cited winning technique; top priority.
+2. **Carrier echo rate conditioned on no NM match.** "The echo of the
+   planned time is mostly a carrier thing when there's no NM match, and
+   stable month to month." Our op_echo_rate isn't conditioned on
+   NM-unmatched, and the echo classifier's recall is ~9%. Add a
+   per-(airport, operator) echo rate among NM-unmatched rows (OOF by
+   month). Cheap.
+3. **Trimmed RMSE alongside full RMSE** in every test: "two rows were ~30%
+   of our squared error, so we stopped trusting the full RMSE alone".
+   Fix the monster set once (e.g. holdout labels > 5 h) and report
+   RMSE both with and without it.
+
+**Revised plan (freeze 2026-10-04):**
+1. CatBoost 20k-round run (on Colab now), then the pre-registered stack
+   re-test (`reports/stack_preregistration.md`).
+2. OOF corrector (item 1), pre-registered, Jan<->Jul cross-fit, full +
+   trimmed RMSE.
+3. NM-unmatched carrier echo feature (item 2). Test inside the corrector
+   or as a feature.
+4. Freeze-week deliverables (REPRODUCE.md, DATA_SOURCES check, public
+   GPLv3 repo, JOAS draft). Start by 2026-10-02 at the latest.
