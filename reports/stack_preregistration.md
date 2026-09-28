@@ -96,3 +96,17 @@ EDDF, EGLL, EHAM, LEBL, LFPG and LSZH, and worse at LIRF (670 vs 653).
 −4.27 (both P(worse) = 0.000). Against lgb alone, pooled: 335.63 → 329.97.
 
 **Leaderboard:** v15 (stack) 296, v16 (stack + ADS-B) **277**, from 302.
+
+## Follow-up: CatBoost with a 20,000-round cap (pre-registered 2026-09-28, before results)
+
+The §40 CatBoost `flip` fit hit the 8,000-round cap while still improving
+(~−2 per 500 rounds at lr 0.05). New run: identical settings except
+`rounds=20000`, with the same early stopping (150 rounds on the June inner
+validation) and the same refit rule (1.1 × best iteration). The echo
+classifier is unchanged. Output: `cat_mixed_r20k` (holdout predictions and
+submission).
+
+**Rule:** the new CatBoost replaces the old one iff the cross-fit NNLS stack
+`lgb + cat_r20k` beats `lgb + cat` (the current stack) in **both** months
+(point delta < 0), with pooled cluster-bootstrap P(worse) < 0.05 for that
+comparison. Otherwise the current stack stays.
