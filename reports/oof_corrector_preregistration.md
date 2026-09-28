@@ -157,4 +157,16 @@ pre-registration, not here.
 
 ## Amendments
 
-(none)
+**2026-09-28 — feature cache, before any OOF prediction or corrector result
+existed.** This machine's `cache/features/` predated the §28
+`minute_of_day` fix (Int8 range [-128, 127]), so it was rebuilt with
+`export_model_inputs.py` (the old copy kept in
+`cache/features_pre_minfix_local/`). The rebuilt cache differs from the old
+one only in `minute_of_day`, plus ~400 of 2.1M training rows where a METAR
+value is off by one unit (tie-breaking between duplicate-hour reports). The
+corrector's inputs (step 3/4) are built from this rebuilt cache. The OOF
+folds and `cat_mixed_holdout_ev.parquet` come from the Drive cache on Colab,
+which already carries the §28 fix. Any residual difference between the two
+caches is limited to those METAR ties. The Step 1 equivalence check passed:
+max |diff| = 0 on every holdout row for `pred`, `echo_prob`,
+`taxi_model_raw` and `use_prior` (`logs/oof_refactor_equivalence.log`).
