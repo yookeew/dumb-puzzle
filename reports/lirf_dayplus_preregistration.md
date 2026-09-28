@@ -69,3 +69,12 @@ Sensitivity, for information only: p = 0.25 → 328.86, 0.40 → 329.76.
 With 11 rows this rests on the mechanism; the leaderboard A/B is the
 confirmation. Ranking: 11 segment rows (3 Jan, 8 Jul), mean shift
 +9,901 s.
+
+## Leaderboard (2026-09-28): REVERTED
+
+v20 (v19 + this adjustment) scored **278** against v19's **274.25**. If
+none of the 11 adjusted ranking rows carried the +24 h bug, the expected
+cost is about +5 points; the observed +3.75 fits "none or nearly none".
+The bug was most likely fixed or absent in the 2026 data. The stage is
+removed from `src/post/stack_submit.py`. It's a 2025-specific label rule
+that didn't transfer.

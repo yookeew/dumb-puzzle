@@ -6,8 +6,8 @@ Writes three files so the leaderboard shows each gain separately:
   data/submissions/stack_lgb_cat_adsb_partial.parquet   + ADS-B partial-track estimate (§41)
   data/submissions/stack_lgb_cat_adsbq_partial.parquet  the same with quality-modulated
                                                         ADS-B blend weights (§43)
-  data/submissions/stack_lgb_cat_adsbq_partial_lirf24.parquet
-                                                        + LIRF "+24 h" label adjustment (§44)
+(The §44 LIRF "+24 h" adjustment was removed after scoring 278 on the
+leaderboard against v19's 274.25; see PROGRESS.md §46.)
 
 Parameters come from the Jan+Jul 2025 holdout only, fit on both months together
 (the cross-fit evaluation that justified them is tests/stack_test.py):
@@ -39,7 +39,7 @@ from scipy.optimize import nnls
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from post import adsb_blend, adsb_partial, lirf_dayplus  # noqa: E402
+from post import adsb_blend, adsb_partial  # noqa: E402
 
 EVAL = ROOT / "cache" / "eval"
 SUB = ROOT / "data" / "submissions"
@@ -187,16 +187,6 @@ def main() -> None:
           f"{(e['blendq'] - e['blend']).abs().mean():.1f}s; quality mix "
           f"{dict(e.group_by(adsb_blend.quality().alias('q')).len().iter_rows())}")
     _write(rk, f"stack_lgb_cat_adsbq_partial{sfx}")
-
-    # ---- ranking: LIRF "+24 h" label adjustment (§44)
-    lp = lirf_dayplus.fit()
-    rk = rk.with_columns(lirf24=lirf_dayplus.apply(rk, "partialq", lp))
-    rk = rk.with_columns(final=_clip(rk, "lirf24"))
-    sg = rk.filter(lirf_dayplus.segment())
-    print(f"LIRF +24h: p={lp['p']:.3f} (from {lp['n_seg']} training-month rows), t0={lp['t0']:.0f}s; "
-          f"ranking segment rows {sg.height} (Jan {sg.filter(pl.col('mvt_ts') < 1.77e9).height}), "
-          f"mean shift {(sg['lirf24'] - sg['partialq']).mean():+.0f}s")
-    _write(rk, f"stack_lgb_cat_adsbq_partial_lirf24{sfx}")
 
 
 if __name__ == "__main__":

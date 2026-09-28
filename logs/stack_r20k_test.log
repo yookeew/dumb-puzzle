@@ -1,0 +1,34 @@
+rows 344,339; monster labels (> 5 h) excluded from trimmed RMSE: 31
+single models, full / trimmed:
+  lgb     335.63 /  273.63
+  cat     336.72 /  273.03
+  cat20   336.56 /  272.48
+
+stack weights  old {'fit 2025-01': {'lgb': np.float64(0.605), 'cat': np.float64(0.397)}, 'fit 2025-07': {'lgb': np.float64(0.48), 'cat': np.float64(0.54)}}
+               new {'fit 2025-01': {'lgb': np.float64(0.583), 'cat20': np.float64(0.418)}, 'fit 2025-07': {'lgb': np.float64(0.492), 'cat20': np.float64(0.527)}}
+
+stack lgb+cat20 vs lgb+cat (cross-fit), FULL:
+  A  Jul (fit Jan)           old= 316.11  new= 316.15  delta= +0.04  CI[-0.38,+0.51]  P(worse)=0.526
+  B  Jan (fit Jul)           old= 353.01  new= 352.74  delta= -0.28  CI[-1.01,+0.15]  P(worse)=0.150
+  POOLED                     old= 333.08  new= 332.97  delta= -0.11  CI[-0.47,+0.22]  P(worse)=0.274
+TRIMMED (labels <= 5 h):
+  A  Jul trimmed             old= 298.47  new= 298.20  delta= -0.26  CI[-0.54,+0.02]  P(worse)=0.030
+  B  Jan trimmed             old= 230.79  new= 230.25  delta= -0.54  CI[-1.42,+0.06]  P(worse)=0.045
+  POOLED trimmed             old= 270.37  new= 270.00  delta= -0.37  CI[-0.75,-0.07]  P(worse)=0.007
+
+rule (both months < 0 and pooled P(worse) < 0.05, full RMSE): KEEP current stack
+shape: (10, 4)
+| ADEP_mvt | old    | new    | delta |
+| ---      | ---    | ---    | ---   |
+| str      | f64    | f64    | f64   |
+|----------|--------|--------|-------|
+| EDDF     | 188.84 | 188.73 | -0.11 |
+| EDDM     | 185.36 | 184.81 | -0.55 |
+| EGLL     | 285.49 | 284.92 | -0.58 |
+| EHAM     | 197.55 | 197.36 | -0.19 |
+| LEBL     | 222.89 | 222.89 | 0.01  |
+| LEMD     | 179.29 | 179.05 | -0.24 |
+| LFPG     | 575.96 | 575.81 | -0.16 |
+| LIRF     | 647.10 | 647.80 | 0.70  |
+| LSZH     | 207.80 | 207.26 | -0.54 |
+| LTFM     | 266.42 | 265.98 | -0.44 |
