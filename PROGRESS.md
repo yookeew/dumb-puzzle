@@ -3462,3 +3462,26 @@ up front as trimmed RMSE (holdout labels > 5 h excluded, a fixed set of 31
 rows), with the guard "full RMSE must not be significantly worse
 (P(worse) < 0.9)". This follows the chat's point about monster rows and
 v20's lesson.
+
+## 48. OOF residual corrector on CatBoost -- REJECTED (L2), Huber variant
+    promising (2026-09-28)
+
+Pre-registered in `reports/oof_corrector_preregistration.md` (42124ba,
+amendment db82f0f); full results there, log `logs/oof_corrector_test.log`.
+
+- **Plumbing (kept):** `fit_predict_months()` (train on any months,
+  predict any rows; `run()` now calls it, output identical on every holdout
+  row) and `run_oof()` (month-wise OOF folds, resumable on Colab). 10
+  CatBoost folds are in `cache/oof/cat_mixed/`.
+- The local `cache/features/` was stale (pre-§28 `minute_of_day`); it has
+  been rebuilt.
+- **Primary (L2 corrector on residual, trained on 30 <= taxi <= 7,200 s):**
+  pooled trimmed -0.83 (P(worse) 0.380), Jul trimmed +1.45, full +6.17
+  (P(worse) 0.974). **Rejected.** Nine airports improve on trimmed RMSE; LIRF
+  gets worse (full +50). Deciles 1-9 each improve by 7-23 s; the top decile
+  gets worse by +49 s.
+- **Huber diagnostic:** trimmed -3.10 (P(worse) 0.000), full -1.13 (P(worse)
+  0.094).
+- **Hypothesis:** selecting the corrector's training rows on the true label
+  biases it against large base predictions (it never sees a large
+  prediction that was right), so it drags down the genuine tail.
