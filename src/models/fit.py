@@ -91,8 +91,9 @@ LABEL_LO, LABEL_HI = 30, 7200
 # so this ceiling is a local-CPU compromise, not a confirmed plateau. Push it
 # higher on Colab/GPU if you want to find where it actually stops improving.
 ROUNDS = 8000
-# CatBoost gets a higher ceiling: it runs on GPU on Colab, so extra rounds are
-# cheap, and early stopping still picks the real count.
+# A 20k CatBoost ceiling was tested in PROGRESS.md §47 and NOT adopted (trimmed
+# -0.37 but full RMSE noise); v19/v21 CatBoost use ROUNDS. Pass rounds=CAT_ROUNDS
+# explicitly to use it.
 CAT_ROUNDS = 20000
 ETA = 0.02
 EARLY_STOP = 150
@@ -506,62 +507,63 @@ LOSS_OBJECTIVE = {
 HUBER_ALPHA = 800.0
 
 
-# ------------------------------------------------------------------------ run
-def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
-        *, rounds: int | None = None, eta: float = ETA, es: int = EARLY_STOP,
-        valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
-        loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
-        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None):
-    """target="flip" fits the regressor on pushback delay `d` and reconstructs
-    taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
-    itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
-    (each still pooled across all 10 airports, exactly like the other two --
-    NOT a per-airport model) and picks per-row by airport at reconstruction
-    time: flip for LIRF, direct everywhere else. On the holdout, flip beats
-    direct at LIRF by ~6% (857s vs 908s) while direct beats flip on every
-    other airport (e.g. EDDF 231->193, EHAM 231->200) -- see PROGRESS.md.
-    The echo blend in _reconstruct_taxi applies identically regardless of
-    target."""
+# ------------------------------------------------------------- fit / predict
+TRAIN_MONTHS = tuple(f"2025-{i:02d}" for i in range(1, 13)
+                     if f"2025-{i:02d}" not in HOLDOUT_MONTHS)
+
+
+def fit_predict_months(engine: str, feats: pl.DataFrame, lab: pl.DataFrame,
+                       fit_months, pred_feats: pl.DataFrame, *,
+                       valid_month: str = VALID_MONTH, rounds: int = ROUNDS,
+                       eta: float = ETA, es: int = EARLY_STOP, loss: str = "huber",
+                       huber_alpha: float = HUBER_ALPHA, target: str = "flip",
+                       seed: int = 42, t0: float | None = None) -> dict:
+    """Train on the labelled rows of `fit_months`, predict every row of
+    `pred_feats` -- the holdout half of run() for an arbitrary month split.
+
+    `feats`: base features (train2025 frame) for at least the fit rows.
+    `lab`: labels2025 with AIRCRAFT_OPERATOR_flt joined; only `fit_months`
+    rows are used. `pred_feats`: base features for exactly the rows to
+    predict (no labels needed). Priors and group encodings are fit on the
+    fit months only (encodings leave-one-month-out for the fit rows);
+    early stopping uses `valid_month`, carved out of the fit months.
+
+    Returns dict(fits, clf_best, f_pred, out); `out` is in `f_pred` row
+    order with MVT_ID_mvt, pred (final reconstructed taxi), echo_prob,
+    taxi_model_raw, use_prior.
+    """
     if target not in ("flip", "direct", "mixed"):
         raise ValueError(f"target must be 'flip', 'direct', or 'mixed', got {target!r}")
-    if rounds is None:
-        rounds = CAT_ROUNDS if engine == "cat" else ROUNDS
+    fit_months = tuple(fit_months)
+    # leak guards (reports/oof_corrector_preregistration.md): the holdout months
+    # never enter a fit, the early-stopping month is a fit month, and no
+    # predicted row is a fit row.
+    if set(fit_months) & set(HOLDOUT_MONTHS):
+        raise ValueError(f"fit_months {fit_months} include a holdout month")
+    if valid_month not in fit_months:
+        raise ValueError(f"valid_month {valid_month!r} not in training months")
     targets_to_fit = ("flip", "direct") if target == "mixed" else (target,)
-    t0 = time.time()
+    t0 = time.time() if t0 is None else t0
     fitter = ENGINES[engine]
-    name = name or f"{engine}_colab"
     objective = LOSS_OBJECTIVE[loss][engine]
     alpha = huber_alpha if loss == "huber" else None
 
-    feats = pl.read_parquet(feat_dir / "train2025.parquet")
-    feats_ho = pl.read_parquet(feat_dir / "holdout_gap2025.parquet")
-    lab = pl.read_parquet(feat_dir / "labels2025.parquet")
-    off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
-    _mem("read feature frames")
+    tr_lab = lab.filter(pl.col("ym").is_in(fit_months))
+    if set(tr_lab["ym"].unique().to_list()) != set(fit_months):
+        raise ValueError("labels missing for some fit months")
+    if pred_feats.join(tr_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt").height:
+        raise ValueError("pred_feats overlaps the fit rows")
 
-    # the group encoders key on operator, which lives only in the feature frame
-    lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
-                   on="MVT_ID_mvt", how="left")
-
-    is_ho = pl.col("ym").is_in(HOLDOUT_MONTHS)
-    tr_lab, ho_lab = lab.filter(~is_ho), lab.filter(is_ho)
-
-    # Holdout features come from the isolated Jan+Jul frame (export_model_inputs.py),
-    # not a slice of the continuous train2025 frame -- that mirrors ranking.parquet's
-    # real Jan->Jul gap instead of hiding it behind a continuous 12-month timeline,
-    # which is what let a real bug (mins_since_cfg_change bridging the gap) hide
-    # behind a good holdout RMSE.
     priors = fit_priors(tr_lab)
     f_tr = apply_priors(feats.join(tr_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
-    f_ho = apply_priors(feats_ho.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"), priors)
+    f_pr = apply_priors(pred_feats, priors)
     tr_lab = f_tr.select("MVT_ID_mvt").join(tr_lab, on="MVT_ID_mvt")
-    ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
 
     # echo-rate / mean-d group encodings: OOF (leave-one-month-out) for the
-    # training rows, full training-split fit for the holdout.
+    # training rows, full training-split fit for the predicted rows.
     f_tr = add_group_encodings_oof(f_tr, tr_lab)
-    f_ho = apply_group_encodings(f_ho, fit_group_encodings(tr_lab))
-    _mem("priors + group encodings (f_tr, f_ho)")
+    f_pr = apply_group_encodings(f_pr, fit_group_encodings(tr_lab))
+    _mem("priors + group encodings (f_tr, f_pr)")
 
     Xtr, names, cats, categories = _matrix(f_tr)
     _mem("Xtr pandas matrix")
@@ -570,8 +572,6 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     ym_tr = tr_lab["ym"].to_numpy()
     keep = (taxi_tr >= LABEL_LO) & (taxi_tr <= LABEL_HI)
     iv = ym_tr == valid_month
-    if not iv.any():
-        raise ValueError(f"valid_month {valid_month!r} not in training months")
     tr_mask, va_mask = keep & ~iv, keep & iv
     fits = {}
     for t in targets_to_fit:
@@ -594,31 +594,150 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     print(f"echo clf fit {time.time() - t0:.0f}s  best_iter={clf_best}  "
           f"base_rate={is_echo_tr[valid_d].mean():.3f}")
     _mem("after echo clf")
+    del Xtr
 
-    Xho, _, _, _ = _matrix(f_ho, categories)
-    ho_off = ho_lab.join(off_ho, on="MVT_ID_mvt")["sched_takeoff_offset"].to_numpy()
-    echo_prob_ho = clf_pred(clf_model, Xho[names])
-    nm_unmatched_ho = f_ho["aobt3_taxi"].is_null().to_numpy()
-    not_lirf_ho = (f_ho["ADEP_mvt"] != "LIRF").to_numpy()
-    prior_taxi_ho = np.nan_to_num(f_ho["median_taxi_prior"].to_numpy())
-    use_prior_ho = nm_unmatched_ho & not_lirf_ho & ~np.isnan(prior_taxi_ho)
-    ceil_ho = np.where(not_lirf_ho, CEIL, LIRF_RAW_CEIL)
+    Xpr, _, _, _ = _matrix(f_pr, categories)
+    pr_off = f_pr["sched_takeoff_offset"].to_numpy()
+    echo_prob = clf_pred(clf_model, Xpr[names])
+    nm_unmatched = f_pr["aobt3_taxi"].is_null().to_numpy()
+    not_lirf = (f_pr["ADEP_mvt"] != "LIRF").to_numpy()
+    prior_taxi = np.nan_to_num(f_pr["median_taxi_prior"].to_numpy())
+    use_prior = nm_unmatched & not_lirf & ~np.isnan(prior_taxi)
+    ceil = np.where(not_lirf, CEIL, LIRF_RAW_CEIL)
 
-    def _recon_ho(t):
+    def _recon(t):
         m, pf, _ = fits[t]
-        raw = pf(m, Xho[names])
-        raw_taxi = (ho_off - raw) if t == "flip" else raw
-        return (_reconstruct_taxi(ho_off, raw_taxi, echo_prob_ho, use_prior_ho,
-                                   prior_taxi_ho, ceil_ho), raw_taxi)
+        raw = pf(m, Xpr[names])
+        raw_taxi = (pr_off - raw) if t == "flip" else raw
+        return (_reconstruct_taxi(pr_off, raw_taxi, echo_prob, use_prior,
+                                   prior_taxi, ceil), raw_taxi)
 
     if target == "mixed":
-        is_lirf_ho = (f_ho["ADEP_mvt"] == "LIRF").to_numpy()
-        recon_flip, raw_flip = _recon_ho("flip")
-        recon_direct, raw_direct = _recon_ho("direct")
-        taxi_hat = np.where(is_lirf_ho, recon_flip, recon_direct)
-        taxi_model_raw_diag = np.where(is_lirf_ho, raw_flip, raw_direct)
+        is_lirf = ~not_lirf
+        recon_flip, raw_flip = _recon("flip")
+        recon_direct, raw_direct = _recon("direct")
+        taxi_hat = np.where(is_lirf, recon_flip, recon_direct)
+        taxi_model_raw = np.where(is_lirf, raw_flip, raw_direct)
     else:
-        taxi_hat, taxi_model_raw_diag = _recon_ho(target)
+        taxi_hat, taxi_model_raw = _recon(target)
+
+    out = f_pr.select("MVT_ID_mvt").with_columns(
+        pred=pl.Series(taxi_hat), echo_prob=pl.Series(echo_prob),
+        taxi_model_raw=pl.Series(taxi_model_raw), use_prior=pl.Series(use_prior))
+    return dict(fits=fits, clf_best=clf_best, f_pred=f_pr, out=out)
+
+
+def oof_valid_month(held_out: str) -> str:
+    """Early-stopping month for an OOF fold: VALID_MONTH, or May when the
+    held-out month is VALID_MONTH itself."""
+    return "2025-05" if held_out == VALID_MONTH else VALID_MONTH
+
+
+def run_oof(engine: str = "cat", feat_dir: Path = FEAT_DIR, name: str | None = None,
+            *, months=TRAIN_MONTHS, out_dir: str | Path | None = None,
+            rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
+            loss: str = "huber", huber_alpha: float = HUBER_ALPHA,
+            target: str = "mixed", seed: int = 42) -> Path:
+    """Month-wise out-of-fold predictions for the training months
+    (reports/oof_corrector_preregistration.md, step 2).
+
+    Fold m fits on TRAIN_MONTHS minus m (Jan/Jul 2025 never enter) and
+    predicts month m's labelled departures from the continuous train2025
+    frame. Each fold is written to <out_dir>/fold=<m>.parquet as soon as it
+    finishes; folds whose file already exists are skipped, so a dropped
+    Colab session just reruns the call."""
+    name = name or f"{engine}_{target}"
+    out_dir = Path(out_dir) if out_dir is not None else ROOT / "cache" / "oof" / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    feats = pl.read_parquet(feat_dir / "train2025.parquet")
+    lab = pl.read_parquet(feat_dir / "labels2025.parquet")
+    lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
+                   on="MVT_ID_mvt", how="left")
+    _mem("oof: read feature frames")
+    for m in months:
+        path = out_dir / f"fold={m}.parquet"
+        if path.exists():
+            print(f"oof fold {m}: exists, skipping", flush=True)
+            continue
+        t0 = time.time()
+        fit_months = tuple(x for x in TRAIN_MONTHS if x != m)
+        valid_month = oof_valid_month(m)
+        pred_ids = lab.filter(pl.col("ym") == m).select("MVT_ID_mvt")
+        print(f"oof fold {m}: fit on {len(fit_months)} months, valid {valid_month}, "
+              f"predict {pred_ids.height:,} rows", flush=True)
+        fp = fit_predict_months(
+            engine, feats, lab, fit_months, feats.join(pred_ids, on="MVT_ID_mvt"),
+            valid_month=valid_month, rounds=rounds, eta=eta, es=es, loss=loss,
+            huber_alpha=huber_alpha, target=target, seed=seed, t0=t0)
+        best = {f"best_iter_{t}": v[2] for t, v in fp["fits"].items()}
+        out = fp["out"].with_columns(
+            ym=pl.lit(m), valid_month=pl.lit(valid_month),
+            best_iter_clf=pl.lit(fp["clf_best"]),
+            **{k: pl.lit(v) for k, v in best.items()})
+        tmp = path.with_suffix(".tmp")
+        out.write_parquet(tmp)
+        tmp.replace(path)
+        print(f"oof fold {m}: wrote {path} ({out.height:,} rows, {time.time() - t0:.0f}s, "
+              f"best {best} clf={fp['clf_best']})", flush=True)
+        del fp, out
+    return out_dir
+
+
+# ------------------------------------------------------------------------ run
+def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
+        *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
+        valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
+        loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
+        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None,
+        rank_out: str | Path | None = None):
+    """target="flip" fits the regressor on pushback delay `d` and reconstructs
+    taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
+    itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
+    (each still pooled across all 10 airports, exactly like the other two --
+    NOT a per-airport model) and picks per-row by airport at reconstruction
+    time: flip for LIRF, direct everywhere else. On the holdout, flip beats
+    direct at LIRF by ~6% (857s vs 908s) while direct beats flip on every
+    other airport (e.g. EDDF 231->193, EHAM 231->200) -- see PROGRESS.md.
+    The echo blend in _reconstruct_taxi applies identically regardless of
+    target."""
+    if target not in ("flip", "direct", "mixed"):
+        raise ValueError(f"target must be 'flip', 'direct', or 'mixed', got {target!r}")
+    targets_to_fit = ("flip", "direct") if target == "mixed" else (target,)
+    t0 = time.time()
+    fitter = ENGINES[engine]
+    name = name or f"{engine}_colab"
+    objective = LOSS_OBJECTIVE[loss][engine]
+    alpha = huber_alpha if loss == "huber" else None
+
+    feats = pl.read_parquet(feat_dir / "train2025.parquet")
+    feats_ho = pl.read_parquet(feat_dir / "holdout_gap2025.parquet")
+    lab = pl.read_parquet(feat_dir / "labels2025.parquet")
+    off_ho = feats_ho.select("MVT_ID_mvt", "sched_takeoff_offset")
+    _mem("read feature frames")
+
+    # the group encoders key on operator, which lives only in the feature frame
+    lab = lab.join(feats.select("MVT_ID_mvt", "AIRCRAFT_OPERATOR_flt"),
+                   on="MVT_ID_mvt", how="left")
+
+    is_ho = pl.col("ym").is_in(HOLDOUT_MONTHS)
+    ho_lab = lab.filter(is_ho)
+
+    # Holdout features come from the isolated Jan+Jul frame (export_model_inputs.py),
+    # not a slice of the continuous train2025 frame -- that mirrors ranking.parquet's
+    # real Jan->Jul gap instead of hiding it behind a continuous 12-month timeline,
+    # which is what let a real bug (mins_since_cfg_change bridging the gap) hide
+    # behind a good holdout RMSE.
+    fp = fit_predict_months(
+        engine, feats, lab, TRAIN_MONTHS,
+        feats_ho.join(ho_lab.select("MVT_ID_mvt"), on="MVT_ID_mvt"),
+        valid_month=valid_month, rounds=rounds, eta=eta, es=es, loss=loss,
+        huber_alpha=huber_alpha, target=target, seed=seed, t0=t0)
+    fits, clf_best, f_ho, out = fp["fits"], fp["clf_best"], fp["f_pred"], fp["out"]
+    ho_lab = f_ho.select("MVT_ID_mvt").join(ho_lab, on="MVT_ID_mvt")
+    echo_prob_ho = out["echo_prob"].to_numpy()
+    use_prior_ho = out["use_prior"].to_numpy()
+    taxi_hat = out["pred"].to_numpy()
+    taxi_model_raw_diag = out["taxi_model_raw"].to_numpy()
 
     # Classifier sanity check BEFORE trusting the blend: precision/recall
     # against the true is_echo label (ho_lab row order matches f_ho/Xho since
@@ -714,13 +833,24 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         m_a, p_a = fits_a[t]
         raw = p_a(m_a, Xr[names_a])
         raw_taxi = (r_off - raw) if t == "flip" else raw
-        return _reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r, ceil_r)
+        return (_reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r, ceil_r),
+                raw_taxi)
 
     if target == "mixed":
         is_lirf_r = (f_r["ADEP_mvt"] == "LIRF").to_numpy()
-        taxi_r = np.where(is_lirf_r, _recon_r("flip"), _recon_r("direct"))
+        (rf, raw_f), (rd, raw_d) = _recon_r("flip"), _recon_r("direct")
+        taxi_r = np.where(is_lirf_r, rf, rd)
+        raw_r = np.where(is_lirf_r, raw_f, raw_d)
     else:
-        taxi_r = _recon_r(target)
+        taxi_r, raw_r = _recon_r(target)
+
+    if rank_out is not None:  # per-row ranking outputs (the OOF corrector needs echo_prob)
+        Path(rank_out).parent.mkdir(parents=True, exist_ok=True)
+        f_r.select("MVT_ID_mvt").with_columns(
+            pred=pl.Series(taxi_r), echo_prob=pl.Series(echo_prob_r),
+            taxi_model_raw=pl.Series(raw_r), use_prior=pl.Series(use_prior_r),
+        ).write_parquet(rank_out)
+        print(f"wrote ranking predictions -> {rank_out}", flush=True)
 
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     full_rounds_report = "/".join(

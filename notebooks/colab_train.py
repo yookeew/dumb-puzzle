@@ -46,5 +46,27 @@ print(ev.group_by("ADEP_mvt").agg(
 ).sort("rmse", descending=True))
 
 # %%
+# OOF CatBoost predictions for the corrector (reports/oof_corrector_preregistration.md).
+# T4 runtime, ~3 h for 10 folds x 3 fits. Each fold is saved to
+# cache/oof/cat_mixed/fold=<month>.parquet as it finishes; if the session drops,
+# rerun this cell and finished folds are skipped. Keep cache/ on Drive.
+import os; os.environ["PRC_MEMLOG"] = "1"
+from models.fit import run_oof
+run_oof(engine="cat", target="mixed", eta=0.05)
+
+# %%
+# CatBoost rerun for v21 (reports/oof_corrector_v2_preregistration.md): the
+# production CatBoost run, also saving the ranking rows' pred/echo_prob, which
+# the corrector needs. T4 runtime, ~40 min (3 holdout fits + 3 refits).
+# Named cat_mixed_rerun so data/submissions/cat_mixed.parquet (v19's input) is
+# left alone. Copy back: cache/eval/cat_mixed_rerun_holdout_ev.parquet,
+# cache/eval/cat_mixed_rank.parquet (and data/submissions/cat_mixed_rerun.parquet).
+import os; os.environ["PRC_MEMLOG"] = "1"
+from models.fit import run
+run(engine="cat", target="mixed", eta=0.05, name="cat_mixed_rerun", submit=True,
+    ev_out="cache/eval/cat_mixed_rerun_holdout_ev.parquet",
+    rank_out="cache/eval/cat_mixed_rank.parquet")
+
+# %%
 # Submissions land in data/submissions/<name>.parquet — download and upload to
 # the challenge portal as <team>_v<n>.parquet.

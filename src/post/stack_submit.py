@@ -18,7 +18,7 @@ They are applied to each engine's all-2025 refit submission
 ADS-B part, to 2026 ranking rows with a recovered pushback
 (cache/adsb_pushback/day=2026-*.parquet).
 
-Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...]
+Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...] [--cat-corrected]
 
 --lag-shift adds SECONDS to that airport's ADS-B lag for the 2026 ranking rows
 only (a leaderboard probe of the year-over-year drift, tests/adsb_drift_test.py);
@@ -47,7 +47,11 @@ TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 RAW = ROOT / "data" / "raw"
 DET = ROOT / "cache" / "adsb_pushback"
-ENGINES = ["lgb", "cat"]
+# --cat-corrected: CatBoost replaced by the OOF-corrected CatBoost (src/post/corrector_v2.py,
+# reports/oof_corrector_v2_preregistration.md); outputs are named stack_lgb_catcorr_*.
+CAT_CORRECTED = "--cat-corrected" in sys.argv
+ENGINES = ["lgb", "catcorr" if CAT_CORRECTED else "cat"]
+PRE = "stack_lgb_catcorr" if CAT_CORRECTED else "stack_lgb_cat"
 CEIL, LIRF_CEIL = 10800, 140000   # models.fit CEIL / LIRF_RAW_CEIL
 
 
@@ -148,7 +152,7 @@ def main() -> None:
     rk = rk.with_columns(pred=pl.Series(rk.select(ENGINES).to_numpy() @ w))
     rk = rk.with_columns(final=_clip(rk, "pred"))
     if not shifts:
-        _write(rk, "stack_lgb_cat")
+        _write(rk, PRE)
     if shifts:  # 2026-only lag adjustment; holdout-fitted p is otherwise unchanged
         p = {**p, "lags": {a: v + shifts.get(a, 0.0) for a, v in p["lags"].items()}}
         print("2026 lag shifts applied:", shifts, "-> lags", {a: round(v) for a, v in sorted(p["lags"].items())})
@@ -165,7 +169,7 @@ def main() -> None:
         print(changed.group_by("ADEP_mvt").agg(
             pl.len().alias("n"), (pl.col("final") - pl.col("pred")).mean().alias("mean_shift_s"),
             (pl.col("final") - pl.col("pred")).abs().mean().alias("mean_abs_shift_s")).sort("ADEP_mvt"))
-    _write(rk, f"stack_lgb_cat_adsb{sfx}")
+    _write(rk, f"{PRE}_adsb{sfx}")
 
     # ---- ranking: + ADS-B partial-track estimate
     rk = adsb_partial.with_inputs(rk.with_columns(base=pl.col("blend")))
@@ -175,7 +179,7 @@ def main() -> None:
     print(f"partial-track rows: {pm.height:,} ({pm.height / rk.height * 100:.1f}%); mean shift "
           f"{(pm['partial'] - pm['base']).mean():+.1f}s; per airport "
           f"{dict(pm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
-    _write(rk, f"stack_lgb_cat_adsb_partial{sfx}")
+    _write(rk, f"{PRE}_adsb_partial{sfx}")
 
     # ---- ranking: quality-modulated blend, then partial (§43)
     rk = rk.with_columns(blendq=adsb_blend.apply(rk, p, q))
@@ -186,7 +190,7 @@ def main() -> None:
     print(f"quality-modulated blend: rows {e.height:,}; mean |change vs unmodulated| "
           f"{(e['blendq'] - e['blend']).abs().mean():.1f}s; quality mix "
           f"{dict(e.group_by(adsb_blend.quality().alias('q')).len().iter_rows())}")
-    _write(rk, f"stack_lgb_cat_adsbq_partial{sfx}")
+    _write(rk, f"{PRE}_adsbq_partial{sfx}")
 
 
 if __name__ == "__main__":

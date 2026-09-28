@@ -1,0 +1,28 @@
+holdout fit 16s  best_iter=100  loss=huber  target=flip
+holdout fit 26s  best_iter=100  loss=huber  target=direct
+echo clf fit 37s  best_iter=100  base_rate=0.055
+echo clf holdout  precision=0.751  recall=0.076  n_true_echo=17349  n_pred_echo=1760
+OVERALL RMSE 552.3 s  (n=344,339)
+  EDDF:219  EDDM:215  EGLL:355  EHAM:229  LEBL:236  LEMD:193  LFPG:601  LIRF:1650  LSZH:235  LTFM:296
+  2025-01:467  2025-07:612
+  False:2072  True:492
+  False:544  True:1472
+total 38s (holdout-only, no submission)
+holdout fit 14s  best_iter=100  loss=huber  target=flip
+holdout fit 25s  best_iter=100  loss=huber  target=direct
+echo clf fit 35s  best_iter=100  base_rate=0.055
+echo clf holdout  precision=0.751  recall=0.076  n_true_echo=17349  n_pred_echo=1760
+OVERALL RMSE 552.3 s  (n=344,339)
+  EDDF:219  EDDM:215  EGLL:355  EHAM:229  LEBL:236  LEMD:193  LFPG:601  LIRF:1650  LSZH:235  LTFM:296
+  2025-01:467  2025-07:612
+  False:2072  True:492
+  False:544  True:1472
+total 37s (holdout-only, no submission)
+rows old/new/joined: 344339 344339 344339
+pred                 max|diff| = 0.000e+00
+echo_prob            max|diff| = 0.000e+00
+taxi_model_raw       max|diff| = 0.000e+00
+use_prior            max|diff| = 0.000e+00
+taxi                 max|diff| = 0.000e+00
+sched_takeoff_offset max|diff| = 0.000e+00
+columns equal: True

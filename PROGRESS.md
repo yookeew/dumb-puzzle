@@ -3462,3 +3462,87 @@ up front as trimmed RMSE (holdout labels > 5 h excluded, a fixed set of 31
 rows), with the guard "full RMSE must not be significantly worse
 (P(worse) < 0.9)". This follows the chat's point about monster rows and
 v20's lesson.
+
+## 48. OOF residual corrector on CatBoost -- REJECTED (L2), Huber variant
+    promising (2026-09-28)
+
+Pre-registered in `reports/oof_corrector_preregistration.md` (42124ba,
+amendment db82f0f); full results there, log `logs/oof_corrector_test.log`.
+
+- **Plumbing (kept):** `fit_predict_months()` (train on any months,
+  predict any rows; `run()` now calls it, output identical on every holdout
+  row) and `run_oof()` (month-wise OOF folds, resumable on Colab). 10
+  CatBoost folds are in `cache/oof/cat_mixed/`.
+- The local `cache/features/` was stale (pre-§28 `minute_of_day`); it has
+  been rebuilt.
+- **Primary (L2 corrector on residual, trained on 30 <= taxi <= 7,200 s):**
+  pooled trimmed -0.83 (P(worse) 0.380), Jul trimmed +1.45, full +6.17
+  (P(worse) 0.974). **Rejected.** Nine airports improve on trimmed RMSE; LIRF
+  gets worse (full +50). Deciles 1-9 each improve by 7-23 s; the top decile
+  gets worse by +49 s.
+- **Huber diagnostic:** trimmed -3.10 (P(worse) 0.000), full -1.13 (P(worse)
+  0.094).
+- **Hypothesis:** selecting the corrector's training rows on the true label
+  biases it against large base predictions (it never sees a large
+  prediction that was right), so it drags down the genuine tail.
+
+## 49. OOF corrector v2 -- ADOPTED; leaderboard v21 = 270.2 (2026-09-28)
+
+Pre-registered in `reports/oof_corrector_v2_preregistration.md` (b326555,
+before results); gate, build and leaderboard results there.
+
+**Design (v1 -> v2):**
+- Huber loss (alpha 800).
+- Training rows and application selected on the **base prediction**
+  (<= 7,200 s) instead of the true label (v1's selection bias, §48).
+- New input: the per-(airport, operator) echo rate **among NM-unmatched
+  rows**, OOF by month (`features.encode.*nmu_echo_rate*`; Task 2, §46
+  item 2).
+- 5,000-round cap. Everything else as v1: LightGBM, 15 leaves, depth 4,
+  min leaf 2,000, inputs = base features + OOF CatBoost prediction + echo
+  probability.
+
+**Holdout gate: PASS.** Pooled trimmed -3.25 (P(worse) 0.000); Jan -3.48,
+Jul -3.14; full -2.76. Every airport improves, including LIRF (-3.6
+trimmed). The top decile of true taxi is now +2.8 s (v1: +49). On
+NM-unmatched rows the mean correction is +70 s.
+
+**v21 build.**
+- The Colab CatBoost rerun differs from the gate's CatBoost by 27 s RMS
+  (GPU nondeterminism). Per the rule, the rerun is used throughout.
+- The corrector reproduces on it: trimmed -3.48, full -2.94.
+- The ranking corrector is refit on 12 months (2.08M rows).
+- Stack weights lgb 0.459 / catcorr 0.555. The ADS-B stages are refit on
+  top.
+- v21 vs v19 on ranking rows: RMS 40 s. A local-only control (rerun
+  CatBoost, no corrector) is RMS 9.8 s from v19, so the corrector is most
+  of the change.
+
+**Leaderboard: v21 = 270.2** (v19 274.25, -4.05). Adopted; new best.
+
+| version | what | score |
+|---|---|---|
+| v19 | stack + ADS-B + partial + quality weights | 274.25 |
+| v20 | + LIRF "+24 h" rule (reverted) | 278 |
+| **v21** | v19 with CatBoost replaced by OOF-corrected CatBoost | **270.2** |
+
+**Rebuild v21:**
+1. Colab: `run_oof(engine="cat", target="mixed", eta=0.05)` and the "CatBoost
+   rerun for v21" cell in `notebooks/colab_train.py`.
+2. Locally: `tests/oof_corrector_v2_test.py` (writes the round count), then
+   `src/post/corrector_v2.py`, then
+   `src/post/stack_submit.py --cat-corrected`.
+
+**Lessons:**
+- The competitors' tip held: the OOF corrector was worth more than any
+  single feature since ADS-B.
+- v1's failure was a design error (selecting rows on the outcome), not
+  a dead idea. Recording the Huber diagnostic in v1 is what pointed to v2.
+
+**Open, if time allows before the 2026-10-04 freeze:**
+- The same corrector for LightGBM, which needs LightGBM OOF folds (~20
+  min/fit locally, slow).
+- The corrector hit its 5,000-round cap in the gate.
+
+Both would need new pre-registrations. Task 3 (freeze deliverables) now
+comes first.

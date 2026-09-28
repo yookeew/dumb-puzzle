@@ -209,6 +209,49 @@ def add_group_encodings_oof(f_train: pl.DataFrame, lab: pl.DataFrame) -> pl.Data
                         on="MVT_ID_mvt", how="left")
 
 
+# Carrier echo rate among NM-unmatched rows (PROGRESS.md §46 item 2; corrector v2
+# input, reports/oof_corrector_v2_preregistration.md). The chat: "the echo of
+# the planned time is mostly a carrier thing when there's no NM match, and stable
+# month to month". The op_* encodings above pool matched and unmatched rows.
+NMU_KEYS = ["ADEP_mvt", "AIRCRAFT_OPERATOR_flt"]
+NMU_COLS = ["nmu_op_echo_rate", "nmu_op_n"]
+
+
+def fit_nmu_echo_rate(lab: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    """lab needs ADEP_mvt, AIRCRAFT_OPERATOR_flt, d, nm_unmatched (bool)."""
+    p = lab.filter(pl.col("nm_unmatched") & pl.col("d").is_not_null()).with_columns(
+        _is_echo=(pl.col("d").abs() < _ECHO_ABS_D).cast(pl.Float64))
+    ap = p.group_by("ADEP_mvt").agg(pl.col("_is_echo").mean().alias("_a_nmu_echo"))
+    g = (p.group_by(NMU_KEYS).agg(pl.col("_is_echo").mean().alias("_rate"), pl.len().alias("_n"))
+         .join(ap, on="ADEP_mvt", how="left"))
+    n, m = pl.col("_n"), _ENC_SMOOTH
+    g = g.select(*NMU_KEYS,
+                 ((n * pl.col("_rate") + m * pl.col("_a_nmu_echo")) / (n + m)).alias("nmu_op_echo_rate"),
+                 pl.col("_n").cast(pl.Int32).alias("nmu_op_n"))
+    return {"op": g, "airport": ap}
+
+
+def apply_nmu_echo_rate(df: pl.DataFrame, enc: dict[str, pl.DataFrame]) -> pl.DataFrame:
+    """Unseen / null operators fall back to the airport's NM-unmatched echo rate, n = 0."""
+    d = df.join(enc["op"], on=NMU_KEYS, how="left").join(enc["airport"], on="ADEP_mvt", how="left")
+    return d.with_columns(pl.col("nmu_op_echo_rate").fill_null(pl.col("_a_nmu_echo")),
+                          pl.col("nmu_op_n").fill_null(0)).drop("_a_nmu_echo")
+
+
+def add_nmu_echo_rate_oof(df: pl.DataFrame, lab: pl.DataFrame) -> pl.DataFrame:
+    """Leave-one-month-out NMU_COLS for labelled rows: a row in month m gets the
+    rate fit on `lab` rows from every other month present in `lab`. `df` needs
+    MVT_ID_mvt + NMU_KEYS; `lab` needs MVT_ID_mvt, `_ENC_FOLD` and the
+    fit_nmu_echo_rate columns. Rows of `df` not in `lab` get null."""
+    keyed = df.select("MVT_ID_mvt", *NMU_KEYS).join(
+        lab.select("MVT_ID_mvt", _ENC_FOLD), on="MVT_ID_mvt", how="inner")
+    parts = [apply_nmu_echo_rate(keyed.filter(pl.col(_ENC_FOLD) == fo),
+                                 fit_nmu_echo_rate(lab.filter(pl.col(_ENC_FOLD) != fo)))
+             for fo in keyed[_ENC_FOLD].unique().to_list()]
+    enc = pl.concat(parts, how="vertical_relaxed").select("MVT_ID_mvt", *NMU_COLS)
+    return df.join(enc, on="MVT_ID_mvt", how="left")
+
+
 def feature_matrix(
     feats: pl.DataFrame, categories: dict[str, list[str]] | None = None
 ) -> tuple[pl.DataFrame, list[str], list[str], dict[str, list[str]]]:
