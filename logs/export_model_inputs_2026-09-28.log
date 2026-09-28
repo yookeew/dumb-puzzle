@@ -1,0 +1,10 @@
+C:\Users\zhang\smart-jigsaw\src\link\stand_link.py:100: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.join_asof(
+C:\Users\zhang\smart-jigsaw\src\link\stand_link.py:112: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.sort("est_offblock").join_asof(
+C:\Users\zhang\smart-jigsaw\src\link\stand_link.py:124: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+  dep = dep.sort("est_offblock").join_asof(
+  train2025.parquet          88.8 MB
+  labels2025.parquet         13.8 MB
+  holdout_gap2025.parquet    14.8 MB
+  ranking.parquet            14.8 MB
