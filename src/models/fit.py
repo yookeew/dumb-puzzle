@@ -91,6 +91,9 @@ LABEL_LO, LABEL_HI = 30, 7200
 # so this ceiling is a local-CPU compromise, not a confirmed plateau. Push it
 # higher on Colab/GPU if you want to find where it actually stops improving.
 ROUNDS = 8000
+# CatBoost gets a higher ceiling: it runs on GPU on Colab, so extra rounds are
+# cheap, and early stopping still picks the real count.
+CAT_ROUNDS = 20000
 ETA = 0.02
 EARLY_STOP = 150
 VALID_MONTH = "2025-06"
@@ -505,7 +508,7 @@ HUBER_ALPHA = 800.0
 
 # ------------------------------------------------------------------------ run
 def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
-        *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
+        *, rounds: int | None = None, eta: float = ETA, es: int = EARLY_STOP,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
         loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
         target: str = "flip", seed: int = 42, ev_out: str | Path | None = None):
@@ -521,6 +524,8 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
     target."""
     if target not in ("flip", "direct", "mixed"):
         raise ValueError(f"target must be 'flip', 'direct', or 'mixed', got {target!r}")
+    if rounds is None:
+        rounds = CAT_ROUNDS if engine == "cat" else ROUNDS
     targets_to_fit = ("flip", "direct") if target == "mixed" else (target,)
     t0 = time.time()
     fitter = ENGINES[engine]
