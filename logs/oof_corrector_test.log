@@ -1,0 +1,106 @@
+OOF rows 1,740,628; labelled training rows without an OOF prediction: 0
+fold QA (month m predicted by a fit on the other 9 training months):
+  2025-02  n=143,697  full= 290.61  trimmed= 286.86  valid=2025-06  iters flip/direct/clf=7995/8000/5000
+  2025-03  n=164,423  full= 214.28  trimmed= 202.02  valid=2025-06  iters flip/direct/clf=7997/6780/4999
+  2025-04  n=175,256  full= 205.34  trimmed= 204.28  valid=2025-06  iters flip/direct/clf=8000/7991/4682
+  2025-05  n=185,181  full= 300.42  trimmed= 211.64  valid=2025-06  iters flip/direct/clf=7998/8000/3778
+  2025-06  n=183,082  full= 318.74  trimmed= 248.83  valid=2025-05  iters flip/direct/clf=3642/8000/5000
+  2025-08  n=191,142  full= 263.39  trimmed= 252.92  valid=2025-06  iters flip/direct/clf=7998/7947/4519
+  2025-09  n=183,934  full= 263.31  trimmed= 241.20  valid=2025-06  iters flip/direct/clf=8000/7994/4983
+  2025-10  n=185,654  full= 230.57  trimmed= 230.51  valid=2025-06  iters flip/direct/clf=8000/8000/4998
+  2025-11  n=162,314  full= 251.08  trimmed= 211.44  valid=2025-06  iters flip/direct/clf=7994/7994/4564
+  2025-12  n=165,656  full= 221.20  trimmed= 220.97  valid=2025-06  iters flip/direct/clf=7992/6658/4990
+  holdout CatBoost (10-month fit): full=337.48  trimmed=273.80
+
+corrector training rows 1,739,556 (training months, 30 <= taxi <= 7200)
+  corrector[regression] best_iter=2000 full_rounds=2200  2025-06 residual RMSE 240.34 -> 231.03 (label range)
+  corrector[huber] best_iter=1996 full_rounds=2196  2025-06 residual RMSE 240.34 -> 235.32 (label range)
+
+holdout rows 344,339; monster labels (> 5 h): 31
+
+PRIMARY (L2 corrector) vs uncorrected CatBoost
+ TRIMMED (decides):
+  Jul trimmed              base= 299.27  corr= 300.72  delta= +1.45  CI[-6.45,+8.95]  P(worse)=0.647
+  Jan trimmed              base= 238.45  corr= 234.00  delta= -4.45  CI[-7.87,-1.25]  P(worse)=0.002
+  POOLED trimmed           base= 273.80  corr= 272.97  delta= -0.83  CI[-5.86,+4.17]  P(worse)=0.380
+ FULL (guard):
+  Jul full                 base= 319.51  corr= 331.69  delta=+12.18  CI[+1.64,+22.60]  P(worse)=0.989
+  Jan full                 base= 358.53  corr= 357.92  delta= -0.60  CI[-5.05,+6.04]  P(worse)=0.374
+  POOLED full              base= 337.48  corr= 343.65  delta= +6.17  CI[-0.02,+12.86]  P(worse)=0.974
+
+rule: pooled trimmed delta<0 & P<0.05 [-0.83, 0.380], both months trimmed<0 [Jan -4.45, Jul +1.45], full guard P<0.9 [0.974]
+  -> REJECT
+
+DIAGNOSTICS (not decisive)
+  pooled trimmed, no LIRF  base= 231.11  corr= 228.88  delta= -2.23  CI[-3.53,-0.98]  P(worse)=0.000
+ Huber variant:
+  POOLED trimmed (huber)   base= 273.80  corr= 270.70  delta= -3.10  CI[-4.81,-1.44]  P(worse)=0.000
+  POOLED full (huber)      base= 337.48  corr= 336.35  delta= -1.13  CI[-2.95,+0.62]  P(worse)=0.094
+ trimmed SSE reduction 1.57e+08; top-100 rows contribute 1.766e+09 (1125.4%)
+
+per airport, trimmed:
+shape: (10, 5)
+| ADEP_mvt | base   | corr   | len   | delta |
+| ---      | ---    | ---    | ---   | ---   |
+| str      | f64    | f64    | u32   | f64   |
+|----------|--------|--------|-------|-------|
+| EDDF     | 190.39 | 190.33 | 36830 | -0.06 |
+| EDDM     | 188.06 | 184.64 | 27091 | -3.42 |
+| EGLL     | 284.69 | 283.36 | 40210 | -1.33 |
+| EHAM     | 200.25 | 195.33 | 40949 | -4.93 |
+| LEBL     | 223.05 | 222.25 | 28985 | -0.80 |
+| LEMD     | 179.91 | 178.78 | 35328 | -1.12 |
+| LFPG     | 269.59 | 263.66 | 39588 | -5.93 |
+| LIRF     | 577.51 | 582.99 | 26499 | 5.48  |
+| LSZH     | 208.30 | 205.12 | 22289 | -3.19 |
+| LTFM     | 268.30 | 268.27 | 46539 | -0.03 |
+per airport, full:
+shape: (10, 5)
+| ADEP_mvt | base   | corr   | len   | delta |
+| ---      | ---    | ---    | ---   | ---   |
+| str      | f64    | f64    | u32   | f64   |
+|----------|--------|--------|-------|-------|
+| EDDF     | 190.39 | 190.33 | 36830 | -0.06 |
+| EDDM     | 188.06 | 184.64 | 27091 | -3.42 |
+| EGLL     | 284.69 | 283.36 | 40210 | -1.33 |
+| EHAM     | 200.25 | 195.33 | 40949 | -4.93 |
+| LEBL     | 223.05 | 222.25 | 28985 | -0.80 |
+| LEMD     | 179.91 | 178.78 | 35328 | -1.12 |
+| LFPG     | 574.85 | 570.29 | 39590 | -4.57 |
+| LIRF     | 673.62 | 723.64 | 26528 | 50.01 |
+| LSZH     | 208.30 | 205.12 | 22289 | -3.19 |
+| LTFM     | 268.30 | 268.27 | 46539 | -0.03 |
+per decile of true taxi (all rows):
+shape: (10, 6)
+| dec | taxi_max | base   | corr   | len   | delta  |
+| --- | ---      | ---    | ---    | ---   | ---    |
+| cat | i64      | f64    | f64    | u32   | f64    |
+|-----|----------|--------|--------|-------|--------|
+| 1   | 569      | 196.88 | 189.73 | 34564 | -7.14  |
+| 2   | 671      | 178.11 | 165.68 | 34648 | -12.43 |
+| 3   | 770      | 223.45 | 210.70 | 34507 | -12.75 |
+| 4   | 842      | 178.71 | 166.77 | 34498 | -11.94 |
+| 5   | 923      | 182.31 | 164.44 | 34055 | -17.87 |
+| 6   | 1020     | 181.71 | 170.23 | 34897 | -11.48 |
+| 7   | 1134     | 190.75 | 178.15 | 34362 | -12.61 |
+| 8   | 1266     | 222.20 | 199.67 | 34276 | -22.52 |
+| 9   | 1505     | 248.60 | 237.17 | 34189 | -11.44 |
+| 10  | 88132    | 880.31 | 929.40 | 34343 | 49.09  |
+mean residual (taxi - pred) per airport, labels in range: OOF training months vs holdout
+shape: (10, 3)
+| ADEP_mvt | oof_mean_res | holdout_mean_res |
+| ---      | ---          | ---              |
+| str      | f64          | f64              |
+|----------|--------------|------------------|
+| EDDF     | -1.56        | -5.28            |
+| EDDM     | -0.71        | 2.48             |
+| EGLL     | 1.87         | -9.95            |
+| EHAM     | -3.36        | -3.13            |
+| LEBL     | -2.73        | -3.08            |
+| LEMD     | -1.26        | -18.26           |
+| LFPG     | -3.90        | -12.72           |
+| LIRF     | -23.79       | -26.99           |
+| LSZH     | 1.25         | -1.57            |
+| LTFM     | 5.70         | 19.48            |
+
+(stack diagnostic skipped: C:\Users\zhang\smart-jigsaw\cache\eval\lgb_mixed_holdout_ev.parquet not present)

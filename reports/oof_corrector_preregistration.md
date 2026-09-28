@@ -170,3 +170,42 @@ which already carries the §28 fix. Any residual difference between the two
 caches is limited to those METAR ties. The Step 1 equivalence check passed:
 max |diff| = 0 on every holdout row for `pred`, `echo_prob`,
 `taxi_model_raw` and `use_prior` (`logs/oof_refactor_equivalence.log`).
+
+## Results (2026-09-28, `tests/oof_corrector_test.py`, log `logs/oof_corrector_test.log`)
+
+Fold QA: all 10 folds present, every labelled training row covered once.
+Fold trimmed RMSE 202-287 (holdout CatBoost 273.80). Most base fits hit the
+8,000-round cap, as production does.
+
+**Primary (L2 corrector) vs uncorrected CatBoost — REJECTED.**
+
+| | base | corrected | delta | P(worse) |
+|---|---|---|---|---|
+| Jul trimmed | 299.27 | 300.72 | +1.45 | 0.647 |
+| Jan trimmed | 238.45 | 234.00 | -4.45 | 0.002 |
+| pooled trimmed | 273.80 | 272.97 | -0.83 | 0.380 |
+| pooled full (guard) | 337.48 | 343.65 | +6.17 | 0.974 |
+
+Fails all three clauses. The corrector hit its 2,000-round cap.
+
+Diagnostics (not decisive):
+- Nine airports improve on trimmed RMSE (EHAM -4.9, LFPG -5.9, EDDM -3.4,
+  LSZH -3.2); LIRF gets worse (trimmed +5.5, full +50.0). Without LIRF:
+  pooled trimmed -2.23 (P(worse) 0.000).
+- By decile of true taxi, deciles 1-9 each improve by 7-23 s; the top
+  decile gets worse by +49 s.
+- Huber variant: pooled trimmed -3.10 (CI [-4.81, -1.44], P(worse) 0.000),
+  full -1.13 (P(worse) 0.094). Per-month values were not computed.
+- The "top-100 rows share" came out at 1,125%: the net gain is small next
+  to large per-row gains and losses, so the share is ill-defined here.
+- Mean residual per airport, OOF vs holdout, agrees in sign for most
+  airports (LEMD -1 vs -18, LTFM +6 vs +19 are the largest gaps).
+- Stack diagnostic skipped (no local `lgb_mixed_holdout_ev.parquet`).
+
+**Likely mechanism (hypothesis, not tested):** the corrector's training rows
+were selected on the *true* label (30 <= taxi <= 7,200 s). Rows whose true
+taxi is large are exactly the ones where the base under-predicts, so the
+filter removes them and teaches the corrector that a large base prediction
+is always too high. On holdout rows with genuinely large labels (the LIRF
+tail, the top decile) it pulls the prediction down. Huber limits the pull,
+which fits it doing better on both metrics.
