@@ -91,6 +91,10 @@ LABEL_LO, LABEL_HI = 30, 7200
 # so this ceiling is a local-CPU compromise, not a confirmed plateau. Push it
 # higher on Colab/GPU if you want to find where it actually stops improving.
 ROUNDS = 8000
+# A 20k CatBoost ceiling was tested in PROGRESS.md §47 and NOT adopted (trimmed
+# -0.37 but full RMSE noise); v19/v21 CatBoost use ROUNDS. Pass rounds=CAT_ROUNDS
+# explicitly to use it.
+CAT_ROUNDS = 20000
 ETA = 0.02
 EARLY_STOP = 150
 VALID_MONTH = "2025-06"
