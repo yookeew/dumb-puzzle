@@ -128,3 +128,27 @@ before upload.
 ## Amendments
 
 (none)
+
+## Gate result (2026-09-28, `tests/oof_corrector_v2_test.py`, log `logs/oof_corrector_v2_test.log`) — PASS
+
+| | base | corrected | delta | CI | P(worse) |
+|---|---|---|---|---|---|
+| Jul trimmed | 299.27 | 296.13 | -3.14 | [-4.54, -1.68] | 0.000 |
+| Jan trimmed | 238.45 | 234.97 | -3.48 | [-5.86, -1.30] | 0.000 |
+| **pooled trimmed** | 273.80 | 270.55 | **-3.25** | [-4.52, -2.00] | 0.000 |
+| pooled full (guard) | 337.48 | 334.72 | -2.76 | [-3.91, -1.77] | 0.000 |
+
+All three clauses hold, so the gate passes and v21 gets built.
+
+- **Every airport improves**, on both trimmed and full RMSE: LFPG -6.8,
+  EHAM -6.2, EDDM -5.5, LSZH -3.8, LIRF -3.6 (trimmed) / -3.1 (full), EGLL
+  -3.2, LEMD -3.0.
+- **Deciles 1-9** improve by 2.5-10.3 s; the top decile is +2.8 (v1:
+  +49).
+- The corrector touches 99.97% of rows. Mean correction is +69.8 s on
+  NM-unmatched rows (mean |.| 190 s, n = 5,323) and -4.5 s on matched rows
+  (mean |.| 30 s).
+- The corrector reached the 5,000-round cap (best_iter 5000, refit 5,500
+  rounds). The cap was fixed in advance, so it stays.
+- Caveat, as stated up front: v2 was designed after seeing v1 on this
+  holdout. The leaderboard A/B (v21) is the final test.

@@ -684,7 +684,8 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         *, rounds: int = ROUNDS, eta: float = ETA, es: int = EARLY_STOP,
         valid_month: str = VALID_MONTH, refit_scale: float = 1.1,
         loss: str = "huber", huber_alpha: float = HUBER_ALPHA, submit: bool = True,
-        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None):
+        target: str = "flip", seed: int = 42, ev_out: str | Path | None = None,
+        rank_out: str | Path | None = None):
     """target="flip" fits the regressor on pushback delay `d` and reconstructs
     taxi = offset - d_hat. target="direct" fits the regressor on `taxi`
     itself, skipping the reconstruction subtraction. target="mixed" fits BOTH
@@ -828,13 +829,24 @@ def run(engine: str = "lgb", feat_dir: Path = FEAT_DIR, name: str | None = None,
         m_a, p_a = fits_a[t]
         raw = p_a(m_a, Xr[names_a])
         raw_taxi = (r_off - raw) if t == "flip" else raw
-        return _reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r, ceil_r)
+        return (_reconstruct_taxi(r_off, raw_taxi, echo_prob_r, use_prior_r, prior_taxi_r, ceil_r),
+                raw_taxi)
 
     if target == "mixed":
         is_lirf_r = (f_r["ADEP_mvt"] == "LIRF").to_numpy()
-        taxi_r = np.where(is_lirf_r, _recon_r("flip"), _recon_r("direct"))
+        (rf, raw_f), (rd, raw_d) = _recon_r("flip"), _recon_r("direct")
+        taxi_r = np.where(is_lirf_r, rf, rd)
+        raw_r = np.where(is_lirf_r, raw_f, raw_d)
     else:
-        taxi_r = _recon_r(target)
+        taxi_r, raw_r = _recon_r(target)
+
+    if rank_out is not None:  # per-row ranking outputs (the OOF corrector needs echo_prob)
+        Path(rank_out).parent.mkdir(parents=True, exist_ok=True)
+        f_r.select("MVT_ID_mvt").with_columns(
+            pred=pl.Series(taxi_r), echo_prob=pl.Series(echo_prob_r),
+            taxi_model_raw=pl.Series(raw_r), use_prior=pl.Series(use_prior_r),
+        ).write_parquet(rank_out)
+        print(f"wrote ranking predictions -> {rank_out}", flush=True)
 
     sub = _write_submission(f_r["MVT_ID_mvt"].to_list(), taxi_r, name)
     full_rounds_report = "/".join(
