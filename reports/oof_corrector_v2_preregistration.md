@@ -192,3 +192,11 @@ is built for diagnosis; it doesn't change the leaderboard rule.
 - **Submission file:** `data/submissions/stack_lgb_catcorr_adsbq_partial.parquet`
   = `smart-jigsaw_v21.parquet`. Ids and order match the template, no nulls,
   min 38 s. Leaderboard score pending; keep iff < 274.25.
+
+## Leaderboard result (2026-09-28) — ADOPTED
+
+**v21 = 270.2** (v19 274.25): -4.05. The pre-registered rule (keep iff
+< 274.25) says keep; v21 is the new best. The holdout stack gain was
+~-2.5 (in-sample 332.52 -> 330.05, control vs v21), so the leaderboard gain
+is ~1.6x that, consistent in direction and roughly in size (§45: "holdout
+gains != leaderboard gains").

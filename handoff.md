@@ -8,7 +8,7 @@ week's work) before changing anything. **The freeze is 2026-10-04.**
 ## Where things stand
 
 - **Branch `adsbround2`**, in sync with origin at `074deb1`.
-- **Best leaderboard score: v19 = 274.25.** The top team is at ~224.
+- **Best leaderboard score: v21 = 270.2** (OOF-corrected CatBoost, PROGRESS.md §49; was v19 = 274.25). The top team is at ~224.
 - **v19 is built by `src/post/stack_submit.py`** (output
   `data/submissions/stack_lgb_cat_adsbq_partial.parquet`; a rebuild is
   byte-identical to the uploaded v19). Its stages:
