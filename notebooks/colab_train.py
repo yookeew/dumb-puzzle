@@ -46,5 +46,14 @@ print(ev.group_by("ADEP_mvt").agg(
 ).sort("rmse", descending=True))
 
 # %%
+# OOF CatBoost predictions for the corrector (reports/oof_corrector_preregistration.md).
+# T4 runtime, ~3 h for 10 folds x 3 fits. Each fold is saved to
+# cache/oof/cat_mixed/fold=<month>.parquet as it finishes; if the session drops,
+# rerun this cell and finished folds are skipped. Keep cache/ on Drive.
+import os; os.environ["PRC_MEMLOG"] = "1"
+from models.fit import run_oof
+run_oof(engine="cat", target="mixed", eta=0.05)
+
+# %%
 # Submissions land in data/submissions/<name>.parquet — download and upload to
 # the challenge portal as <team>_v<n>.parquet.
