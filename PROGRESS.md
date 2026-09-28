@@ -3446,3 +3446,19 @@ stronger base model.
    or as a feature.
 4. Freeze-week deliverables (REPRODUCE.md, DATA_SOURCES check, public
    GPLv3 repo, JOAS draft). Start by 2026-10-02 at the latest.
+
+## 47. CatBoost 20k-round cap -- not adopted (full RMSE rule) (2026-09-28)
+
+`cat_mixed_r20k` alone: full 336.56 (8k: 336.72); trimmed (labels <= 5 h)
+272.48 (8k: 273.03). Cross-fit stack lgb+cat20 vs lgb+cat
+(`tests/stack_r20k_test.py`):
+- full: Jul +0.04, Jan -0.28, pooled -0.11 (P(worse) 0.274), so the
+  pre-registered rule says **keep**.
+- trimmed: pooled -0.37 (P(worse) 0.007), both months better. 8/10
+  airports improve; LIRF's monsters (+0.70) mask it on full RMSE.
+
+**Convention from now on:** pre-registrations state the decision metric
+up front as trimmed RMSE (holdout labels > 5 h excluded, a fixed set of 31
+rows), with the guard "full RMSE must not be significantly worse
+(P(worse) < 0.9)". This follows the chat's point about monster rows and
+v20's lesson.

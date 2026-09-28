@@ -110,3 +110,12 @@ submission).
 `lgb + cat_r20k` beats `lgb + cat` (the current stack) in **both** months
 (point delta < 0), with pooled cluster-bootstrap P(worse) < 0.05 for that
 comparison. Otherwise the current stack stays.
+
+**Result (2026-09-28, `tests/stack_r20k_test.py`, log `logs/stack_r20k_test.log`):
+KEEP the current stack.** Full RMSE (the pre-registered metric): Jul +0.04,
+Jan −0.28, pooled −0.11 (P(worse) 0.274), which fails the rule. Trimmed RMSE
+(31 holdout labels > 5 h excluded; reported, not decisive): Jul −0.26
+(P(worse) 0.030), Jan −0.54 (0.045), pooled −0.37 (0.007). So there's a
+small real gain on ordinary rows, masked by LIRF's monster rows (LIRF
++0.70). Not adopted: the rule is followed, and ~0.4 s on the holdout
+isn't worth a pipeline change this close to the freeze.
