@@ -120,3 +120,26 @@ Re-run the detector on all 126 days with the override
 
 Nothing is staged. The override code stays opt-in and off; the result is
 recorded in §51 Part B.
+
+## Amendment 1 (2026-09-29, before any Step 2 / holdout result)
+
+The first run (`logs/adsb_missing_stand_test.log`, first version) stopped at the
+Step 1 identity check under the stop rule. 151,115 rows outside the 19 stands
+differed, and Step 2 (the gate) never ran. The cause was an implementation defect
+in the override, not an effect of the new positions:
+- The detector projects each airport around `lat0` = the mean latitude of its
+  stand table. Appending the override rows shifted `lat0` at LSZH, EDDF and LEMD.
+- The anti-join used to merge the overrides reordered rows, which changed the mean
+  in the last bit elsewhere (EDDM).
+- Every projected distance moved slightly as a result. That flipped borderline
+  100 m / 1 km decisions and run matching on some rows, and changed float fields
+  on many more (tier unchanged on almost all of them).
+
+**Fix (implementation only):**
+- `detect_day(day, pos, extra)` resolves STAND_mvt with the overrides, but keeps
+  `lat0` from the unchanged Gateway table.
+- `with_overrides` keeps the original rows in their original order.
+
+The hypothesis, the 19 stands, the strict identity rule (every column identical,
+no tolerance; only pre-declared run re-assignments exempt), the stop rule, the
+gate and the decision rule are all unchanged. The test is re-run from Step 1.

@@ -16,6 +16,7 @@ import polars as pl
 
 ROOT = Path(__file__).resolve().parents[2]
 STANDS = ROOT / "data" / "external" / "stands.csv"
+EMPIRICAL = ROOT / "data" / "derived" / "stands_empirical.csv"
 
 
 def stand_key(col: pl.Expr) -> pl.Expr:
@@ -68,3 +69,20 @@ def attach_stand_coords(mvt: pl.DataFrame, positions: pl.DataFrame,
         stand_lat=pl.coalesce("stand_lat", "_lat2"),
         stand_lon=pl.coalesce("stand_lon", "_lon2"),
     ).drop("_k", "_kb", "_lat2", "_lon2")
+
+
+def missing_stand_overrides() -> pl.DataFrame:
+    """(airport, key, lat, lon) for stands absent from Gateway, from the label-free
+    empirical positions (data/derived/stands_empirical.csv, PROGRESS.md §51 Part B;
+    reports/adsb_missing_stand_preregistration.md): rows kept (n >= 10, spread <= 40 m)
+    and not resolvable to Gateway. Gateway positions are never replaced."""
+    e = pl.read_csv(EMPIRICAL).filter(pl.col("keep") & ~pl.col("gateway_resolved"))
+    return e.select("airport", key=stand_key(pl.col("STAND_mvt")), lat="lat", lon="lon")
+
+
+def with_overrides(positions: pl.DataFrame, overrides: pl.DataFrame) -> pl.DataFrame:
+    """positions (original rows, original order) plus override rows appended; an override
+    replaces any existing row with the same (airport, key)."""
+    ok = pl.concat_str("airport", pl.lit("|"), "key")
+    drop = overrides.select(ok.alias("k"))["k"]
+    return pl.concat([positions.filter(~ok.is_in(drop.implode())), overrides.select(positions.columns)])

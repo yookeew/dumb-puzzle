@@ -35,7 +35,11 @@ of that day at every challenge airport:
   sample), adsb_pb_dist_m (pushback sample's distance to the own stand),
   adsb_pb_gs (its ground speed, kt).
 
-Run:  .venv/Scripts/python.exe src/link/adsb_pushback.py
+Run:  .venv/Scripts/python.exe src/link/adsb_pushback.py [--missing-stands]
+
+--missing-stands adds empirical positions for the 19 stands absent from Gateway
+(src/ingest/stands.missing_stand_overrides, reports/adsb_missing_stand_preregistration.md)
+and writes to cache/adsb_pushback_ms/ instead; the default output is unchanged.
 """
 
 from __future__ import annotations
@@ -53,11 +57,13 @@ import polars as pl
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from src.ingest.normalise_adsb import available_days, load_day  # noqa: E402
-from src.ingest.stands import attach_stand_coords, load_stands, stand_positions  # noqa: E402
+from src.ingest.stands import (  # noqa: E402
+    attach_stand_coords, load_stands, missing_stand_overrides, stand_positions, with_overrides)
 
 RAW = ROOT / "data" / "raw"
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 OUT = ROOT / "cache" / "adsb_pushback"
+OUT_MS = ROOT / "cache" / "adsb_pushback_ms"
 
 SURFACE_GS = 40.0
 STATIONARY_GS = 1.0
@@ -125,9 +131,12 @@ def departures(day: dt.date) -> pl.DataFrame:
                           mvt_ts=pl.col("MVT_TIME_UTC_mvt").dt.epoch("ms") / 1000.0))
 
 
-def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
+def detect_day(day: dt.date, pos: pl.DataFrame, extra: pl.DataFrame | None = None) -> pl.DataFrame:
+    """extra: optional (airport, key, lat, lon) positions for stands missing from `pos`.
+    They are used only to resolve STAND_mvt; each airport's projection origin (lat0)
+    still comes from `pos` alone, so rows at other stands are unaffected."""
     adsb = load_day(day)
-    mv = attach_stand_coords(departures(day), pos)
+    mv = attach_stand_coords(departures(day), pos if extra is None else with_overrides(pos, extra))
     cov = dict(adsb.filter(pl.col("gs") < SURFACE_GS).group_by("airport")
                .agg(pl.col("hex").n_unique()).iter_rows())
     out = []
@@ -191,12 +200,14 @@ def detect_day(day: dt.date, pos: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(out, schema=SCHEMA)
 
 
-def main(days: list[dt.date] | None = None) -> None:
+def main(days: list[dt.date] | None = None, missing_stands: bool = False) -> None:
     pos = stand_positions(load_stands())
-    OUT.mkdir(parents=True, exist_ok=True)
+    extra = missing_stand_overrides() if missing_stands else None
+    out = OUT_MS if missing_stands else OUT
+    out.mkdir(parents=True, exist_ok=True)
     for day in days or available_days():
-        df = detect_day(day, pos)
-        df.write_parquet(OUT / f"day={day.isoformat()}.parquet")
+        df = detect_day(day, pos, extra)
+        df.write_parquet(out / f"day={day.isoformat()}.parquet")
         n_tier = df.filter(pl.col("adsb_tier").is_in(["appear", "dwell"])).height
         print(f"{day}: {df.height:,} DEP, matched {df['adsb_matched'].sum():,}, "
               f"appear+dwell {n_tier:,} ({n_tier / df.height * 100:.1f}%)")
@@ -207,4 +218,4 @@ def load_all() -> pl.DataFrame:
 
 
 if __name__ == "__main__":
-    main()
+    main(missing_stands="--missing-stands" in sys.argv)
