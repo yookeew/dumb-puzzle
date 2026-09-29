@@ -49,6 +49,7 @@ MONSTER_S, N_MONSTER = 5 * 3600, 31
 CEIL, LIRF_CEIL = 10800, 140000          # stack_submit._clip
 N_RES, SEED = 3000, 0
 N_OVERRIDES = 19
+FLOAT_TOL = 1e-6           # amendment 2 (B0's reproduction criterion)
 
 
 def section(t: str) -> None:
@@ -82,9 +83,16 @@ def step1() -> None:
             pl.col("at_override").fill_null(False))
         j = (old.join(new, on="MVT_ID_mvt", how="full", suffix="_n", coalesce=True)
              .join(st.select("MVT_ID_mvt", "at_override"), on="MVT_ID_mvt", how="left"))
+        # identity (amendment 2): non-float columns exact; float columns within FLOAT_TOL
+        # (the unchanged detector itself only reproduces its cache to ~1e-10 m)
         diff = pl.lit(False)
         for c in cols[1:]:
-            diff = diff | pl.col(c).ne_missing(pl.col(f"{c}_n"))
+            if adsb_pushback.SCHEMA[c] == pl.Float64:
+                d = ((pl.col(c) - pl.col(f"{c}_n")).abs() > FLOAT_TOL).fill_null(
+                    pl.col(c).is_null() != pl.col(f"{c}_n").is_null())
+            else:
+                d = pl.col(c).ne_missing(pl.col(f"{c}_n"))
+            diff = diff | d
         j = j.with_columns(diff=diff)
         new_ov_runs = set(new.join(st.filter("at_override").select("MVT_ID_mvt"), on="MVT_ID_mvt")
                           .filter("adsb_matched").select("airport", "adsb_first_ts", "adsb_n_pts").iter_rows())

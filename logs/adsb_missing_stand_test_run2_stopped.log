@@ -1,0 +1,311 @@
+run started 2026-09-29 18:42:08
+pre-registration: reports/adsb_missing_stand_preregistration.md
+
+==============================================================================
+STEP 1: override detector output + identity check
+==============================================================================
+override stands: 19  [('EDDF', 'V151'), ('EDDF', 'V153'), ('EDDF', 'V322'), ('LEMD', '259'), ('LEMD', '263'), ('LEMD', 'T20'), ('LSZH', '107'), ('LSZH', '501'), ('LSZH', 'F70'), ('LSZH', 'F71'), ('LSZH', 'GA6'), ('LSZH', 'HAN'), ('LSZH', 'I1'), ('LSZH', 'I2'), ('LSZH', 'I3'), ('LSZH', 'I4'), ('LSZH', 'I5'), ('LSZH', 'MFG'), ('LSZH', 'REG')]
+2025-01-01: 4,788 DEP, matched 1,874, appear+dwell 882 (18.4%)
+2025-01-02: 5,354 DEP, matched 1,963, appear+dwell 876 (16.4%)
+2025-01-03: 5,498 DEP, matched 2,242, appear+dwell 1,008 (18.3%)
+2025-01-04: 5,097 DEP, matched 1,976, appear+dwell 978 (19.2%)
+2025-01-05: 5,186 DEP, matched 1,904, appear+dwell 867 (16.7%)
+2025-01-06: 5,309 DEP, matched 2,085, appear+dwell 980 (18.5%)
+2025-01-07: 4,884 DEP, matched 1,881, appear+dwell 884 (18.1%)
+2025-01-08: 4,842 DEP, matched 1,891, appear+dwell 913 (18.9%)
+2025-01-09: 4,928 DEP, matched 1,878, appear+dwell 883 (17.9%)
+2025-01-10: 5,153 DEP, matched 2,093, appear+dwell 921 (17.9%)
+2025-01-11: 4,655 DEP, matched 1,710, appear+dwell 791 (17.0%)
+2025-01-12: 5,045 DEP, matched 2,041, appear+dwell 901 (17.9%)
+2025-01-13: 4,908 DEP, matched 2,068, appear+dwell 922 (18.8%)
+2025-01-14: 4,612 DEP, matched 1,848, appear+dwell 887 (19.2%)
+2025-01-15: 4,676 DEP, matched 1,841, appear+dwell 856 (18.3%)
+2025-01-16: 4,861 DEP, matched 1,993, appear+dwell 874 (18.0%)
+2025-01-17: 5,153 DEP, matched 2,082, appear+dwell 959 (18.6%)
+2025-01-18: 4,608 DEP, matched 1,747, appear+dwell 851 (18.5%)
+2025-01-19: 5,026 DEP, matched 2,033, appear+dwell 916 (18.2%)
+2025-01-20: 5,050 DEP, matched 2,069, appear+dwell 976 (19.3%)
+2025-01-21: 4,584 DEP, matched 1,745, appear+dwell 889 (19.4%)
+2025-01-22: 4,900 DEP, matched 1,971, appear+dwell 949 (19.4%)
+2025-01-23: 5,016 DEP, matched 2,080, appear+dwell 935 (18.6%)
+2025-01-24: 5,220 DEP, matched 2,219, appear+dwell 1,028 (19.7%)
+2025-01-25: 4,690 DEP, matched 1,857, appear+dwell 942 (20.1%)
+2025-01-26: 5,078 DEP, matched 1,927, appear+dwell 916 (18.0%)
+2025-01-27: 4,998 DEP, matched 2,058, appear+dwell 992 (19.8%)
+2025-01-28: 4,619 DEP, matched 2,033, appear+dwell 983 (21.3%)
+2025-01-29: 4,782 DEP, matched 1,966, appear+dwell 980 (20.5%)
+2025-01-30: 4,949 DEP, matched 2,056, appear+dwell 940 (19.0%)
+2025-01-31: 5,237 DEP, matched 2,146, appear+dwell 967 (18.5%)
+2025-07-01: 6,071 DEP, matched 2,805, appear+dwell 1,179 (19.4%)
+2025-07-02: 6,134 DEP, matched 2,507, appear+dwell 1,081 (17.6%)
+2025-07-03: 5,934 DEP, matched 2,144, appear+dwell 884 (14.9%)
+2025-07-04: 5,992 DEP, matched 2,411, appear+dwell 1,015 (16.9%)
+2025-07-05: 5,970 DEP, matched 2,439, appear+dwell 961 (16.1%)
+2025-07-06: 6,125 DEP, matched 2,434, appear+dwell 914 (14.9%)
+2025-07-07: 6,219 DEP, matched 2,588, appear+dwell 996 (16.0%)
+2025-07-08: 6,106 DEP, matched 2,470, appear+dwell 943 (15.4%)
+2025-07-09: 6,178 DEP, matched 2,685, appear+dwell 1,063 (17.2%)
+2025-07-10: 6,313 DEP, matched 2,613, appear+dwell 1,039 (16.5%)
+2025-07-11: 6,409 DEP, matched 2,246, appear+dwell 870 (13.6%)
+2025-07-12: 5,920 DEP, matched 2,183, appear+dwell 867 (14.6%)
+2025-07-13: 6,198 DEP, matched 2,146, appear+dwell 869 (14.0%)
+2025-07-14: 6,268 DEP, matched 2,461, appear+dwell 1,026 (16.4%)
+2025-07-15: 6,120 DEP, matched 2,214, appear+dwell 894 (14.6%)
+2025-07-16: 6,206 DEP, matched 2,599, appear+dwell 1,041 (16.8%)
+2025-07-17: 6,280 DEP, matched 2,630, appear+dwell 1,002 (16.0%)
+2025-07-18: 6,418 DEP, matched 2,615, appear+dwell 1,078 (16.8%)
+2025-07-19: 5,899 DEP, matched 2,897, appear+dwell 1,281 (21.7%)
+2025-07-20: 6,204 DEP, matched 2,476, appear+dwell 1,079 (17.4%)
+2025-07-21: 6,182 DEP, matched 3,032, appear+dwell 1,322 (21.4%)
+2025-07-22: 6,142 DEP, matched 2,323, appear+dwell 886 (14.4%)
+2025-07-23: 6,205 DEP, matched 2,607, appear+dwell 984 (15.9%)
+2025-07-24: 6,254 DEP, matched 3,068, appear+dwell 1,276 (20.4%)
+2025-07-25: 6,235 DEP, matched 2,847, appear+dwell 1,250 (20.0%)
+2025-07-26: 5,990 DEP, matched 2,769, appear+dwell 1,189 (19.8%)
+2025-07-27: 6,096 DEP, matched 2,638, appear+dwell 1,195 (19.6%)
+2025-07-28: 6,230 DEP, matched 3,168, appear+dwell 1,358 (21.8%)
+2025-07-29: 6,091 DEP, matched 3,072, appear+dwell 1,359 (22.3%)
+2025-07-30: 6,163 DEP, matched 3,123, appear+dwell 1,368 (22.2%)
+2025-07-31: 6,161 DEP, matched 3,261, appear+dwell 1,389 (22.5%)
+2025-09-15: 6,154 DEP, matched 3,346, appear+dwell 1,566 (25.4%)
+2025-11-15: 5,099 DEP, matched 3,263, appear+dwell 1,476 (28.9%)
+2026-01-01: 4,970 DEP, matched 2,801, appear+dwell 1,280 (25.8%)
+2026-01-02: 5,386 DEP, matched 2,965, appear+dwell 1,276 (23.7%)
+2026-01-03: 4,990 DEP, matched 2,714, appear+dwell 1,243 (24.9%)
+2026-01-04: 5,169 DEP, matched 2,825, appear+dwell 1,226 (23.7%)
+2026-01-05: 4,894 DEP, matched 2,616, appear+dwell 1,146 (23.4%)
+2026-01-06: 4,639 DEP, matched 2,550, appear+dwell 1,171 (25.2%)
+2026-01-07: 4,359 DEP, matched 2,311, appear+dwell 1,067 (24.5%)
+2026-01-08: 4,963 DEP, matched 2,873, appear+dwell 1,368 (27.6%)
+2026-01-09: 5,038 DEP, matched 2,903, appear+dwell 1,351 (26.8%)
+2026-01-10: 4,702 DEP, matched 2,600, appear+dwell 1,191 (25.3%)
+2026-01-11: 5,202 DEP, matched 3,185, appear+dwell 1,484 (28.5%)
+2026-01-12: 4,894 DEP, matched 2,762, appear+dwell 1,252 (25.6%)
+2026-01-13: 4,593 DEP, matched 2,529, appear+dwell 1,139 (24.8%)
+2026-01-14: 4,759 DEP, matched 2,854, appear+dwell 1,250 (26.3%)
+2026-01-15: 5,001 DEP, matched 2,959, appear+dwell 1,294 (25.9%)
+2026-01-16: 5,273 DEP, matched 3,222, appear+dwell 1,430 (27.1%)
+2026-01-17: 4,639 DEP, matched 2,851, appear+dwell 1,323 (28.5%)
+2026-01-18: 5,174 DEP, matched 3,303, appear+dwell 1,400 (27.1%)
+2026-01-19: 5,128 DEP, matched 3,215, appear+dwell 1,413 (27.6%)
+2026-01-20: 4,637 DEP, matched 2,826, appear+dwell 1,335 (28.8%)
+2026-01-21: 4,800 DEP, matched 3,041, appear+dwell 1,434 (29.9%)
+2026-01-22: 5,157 DEP, matched 3,380, appear+dwell 1,531 (29.7%)
+2026-01-23: 5,370 DEP, matched 3,002, appear+dwell 1,281 (23.9%)
+2026-01-24: 4,621 DEP, matched 2,828, appear+dwell 1,315 (28.5%)
+2026-01-25: 5,026 DEP, matched 3,212, appear+dwell 1,436 (28.6%)
+2026-01-26: 4,941 DEP, matched 3,104, appear+dwell 1,451 (29.4%)
+2026-01-27: 4,639 DEP, matched 2,711, appear+dwell 1,166 (25.1%)
+2026-01-28: 4,725 DEP, matched 2,469, appear+dwell 1,120 (23.7%)
+2026-01-29: 5,044 DEP, matched 2,656, appear+dwell 1,231 (24.4%)
+2026-01-30: 5,384 DEP, matched 3,069, appear+dwell 1,308 (24.3%)
+2026-01-31: 4,602 DEP, matched 2,356, appear+dwell 1,092 (23.7%)
+2026-07-01: 6,062 DEP, matched 3,429, appear+dwell 1,621 (26.7%)
+2026-07-02: 6,289 DEP, matched 3,632, appear+dwell 1,865 (29.7%)
+2026-07-03: 6,356 DEP, matched 3,707, appear+dwell 1,870 (29.4%)
+2026-07-04: 6,005 DEP, matched 3,526, appear+dwell 1,817 (30.3%)
+2026-07-05: 6,201 DEP, matched 3,618, appear+dwell 2,051 (33.1%)
+2026-07-06: 6,218 DEP, matched 3,911, appear+dwell 2,206 (35.5%)
+2026-07-07: 6,048 DEP, matched 3,771, appear+dwell 2,100 (34.7%)
+2026-07-08: 6,227 DEP, matched 3,743, appear+dwell 1,929 (31.0%)
+2026-07-09: 6,300 DEP, matched 3,734, appear+dwell 2,061 (32.7%)
+2026-07-10: 6,372 DEP, matched 3,643, appear+dwell 1,995 (31.3%)
+2026-07-11: 6,013 DEP, matched 3,575, appear+dwell 1,974 (32.8%)
+2026-07-12: 6,250 DEP, matched 3,665, appear+dwell 1,969 (31.5%)
+2026-07-13: 6,253 DEP, matched 3,558, appear+dwell 1,863 (29.8%)
+2026-07-14: 6,087 DEP, matched 3,246, appear+dwell 1,711 (28.1%)
+2026-07-15: 6,180 DEP, matched 3,212, appear+dwell 1,861 (30.1%)
+2026-07-16: 6,226 DEP, matched 3,210, appear+dwell 1,768 (28.4%)
+2026-07-17: 6,321 DEP, matched 3,421, appear+dwell 1,867 (29.5%)
+2026-07-18: 5,998 DEP, matched 3,200, appear+dwell 1,753 (29.2%)
+2026-07-19: 6,205 DEP, matched 3,448, appear+dwell 1,930 (31.1%)
+2026-07-20: 6,223 DEP, matched 3,516, appear+dwell 1,847 (29.7%)
+2026-07-21: 6,102 DEP, matched 3,507, appear+dwell 1,798 (29.5%)
+2026-07-22: 6,237 DEP, matched 3,487, appear+dwell 1,772 (28.4%)
+2026-07-23: 6,256 DEP, matched 3,530, appear+dwell 1,864 (29.8%)
+2026-07-24: 6,407 DEP, matched 3,429, appear+dwell 1,816 (28.3%)
+2026-07-25: 6,022 DEP, matched 3,287, appear+dwell 1,768 (29.4%)
+2026-07-26: 6,258 DEP, matched 3,484, appear+dwell 1,904 (30.4%)
+2026-07-27: 6,243 DEP, matched 3,362, appear+dwell 1,775 (28.4%)
+2026-07-28: 6,082 DEP, matched 3,246, appear+dwell 1,797 (29.5%)
+2026-07-29: 6,153 DEP, matched 3,296, appear+dwell 1,807 (29.4%)
+2026-07-30: 6,248 DEP, matched 3,349, appear+dwell 1,920 (30.7%)
+2026-07-31: 6,280 DEP, matched 3,425, appear+dwell 1,829 (29.1%)
+wrote cache\adsb_pushback_ms (126 days) in 121s
+  VIOLATION 2025-01-01: 256 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-02: 257 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-03: 272 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-04: 280 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-05: 262 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-06: 289 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-07: 270 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-08: 298 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-09: 256 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-10: 296 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-11: 259 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-12: 270 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-13: 295 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-14: 279 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-15: 270 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-16: 318 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-17: 305 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-18: 246 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-19: 274 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-20: 275 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-21: 256 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-22: 282 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-23: 280 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-24: 336 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-25: 254 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-26: 270 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-27: 268 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-28: 275 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-29: 265 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-30: 214 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-01-31: 302 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-01: 290 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-02: 291 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-03: 275 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-04: 328 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-05: 288 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-06: 327 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-07: 312 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-08: 310 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-09: 347 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-10: 341 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-11: 314 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-12: 322 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-13: 254 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-14: 296 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-15: 304 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-16: 310 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-17: 310 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-18: 339 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-19: 542 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-20: 465 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-21: 514 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-22: 354 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-23: 391 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-24: 544 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-25: 490 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-26: 528 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-27: 520 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-28: 565 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-29: 531 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-30: 559 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-07-31: 571 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-09-15: 445 rows differ outside the override stands, not re-assigned
+  VIOLATION 2025-11-15: 478 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-01: 381 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-02: 415 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-03: 338 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-04: 358 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-05: 366 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-06: 354 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-07: 354 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-08: 359 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-09: 381 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-10: 349 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-11: 421 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-12: 374 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-13: 333 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-14: 347 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-15: 341 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-16: 421 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-17: 323 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-18: 379 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-19: 375 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-20: 332 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-21: 376 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-22: 407 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-23: 381 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-24: 337 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-25: 368 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-26: 350 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-27: 344 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-28: 352 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-29: 329 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-30: 339 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-01-31: 298 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-01: 329 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-02: 378 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-03: 362 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-04: 345 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-05: 334 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-06: 374 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-07: 362 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-08: 367 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-09: 417 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-10: 373 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-11: 357 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-12: 368 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-13: 369 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-14: 359 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-15: 389 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-16: 361 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-17: 360 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-18: 321 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-19: 329 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-20: 350 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-21: 351 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-22: 368 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-23: 375 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-24: 401 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-25: 337 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-26: 344 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-27: 363 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-28: 342 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-29: 356 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-30: 362 rows differ outside the override stands, not re-assigned
+  VIOLATION 2026-07-31: 380 rows differ outside the override stands, not re-assigned
+identity check: {'rows': 700513, 'at_override': 7485, 'changed_override': 5878, 'reassigned': 1005, 'violations': 43949}
+non-override rows that changed (all must be 'explained' = run re-assigned to an override-stand movement):
+shape: (43, 5)
+| airport | adsb_tier | adsb_tier_new | explained | len   |
+| ---     | ---       | ---           | ---       | ---   |
+| str     | str       | str           | bool      | u32   |
+|---------|-----------|---------------|-----------|-------|
+| EDDF    | dwell     | dwell         | false     | 703   |
+| EDDF    | null      | null          | true      | 315   |
+| EDDF    | pass      | pass          | true      | 1     |
+| EDDF    | appear    | null          | true      | 6     |
+| EDDF    | pass      | pass          | false     | 327   |
+| EDDF    | pass      | appear        | true      | 1     |
+| EDDF    | pass      | null          | true      | 10    |
+| EDDF    | null      | null          | false     | 6489  |
+| EDDF    | dwell     | null          | true      | 4     |
+| EDDF    | appear    | appear        | false     | 720   |
+| EDDM    | dwell     | dwell         | false     | 12219 |
+| EDDM    | pass      | pass          | false     | 134   |
+| EDDM    | appear    | appear        | false     | 4452  |
+| EDDM    | null      | null          | false     | 4439  |
+| EGLL    | dwell     | dwell         | false     | 18    |
+| EGLL    | null      | null          | false     | 222   |
+| EGLL    | appear    | appear        | false     | 22    |
+| EHAM    | pass      | pass          | false     | 3     |
+| EHAM    | null      | null          | false     | 6     |
+| EHAM    | dwell     | dwell         | false     | 52    |
+| EHAM    | appear    | appear        | false     | 4     |
+| LEMD    | pass      | null          | true      | 2     |
+| LEMD    | null      | null          | false     | 12    |
+| LEMD    | appear    | null          | true      | 1     |
+| LEMD    | null      | null          | true      | 59    |
+| LEMD    | pass      | pass          | true      | 1     |
+| LIRF    | appear    | appear        | false     | 606   |
+| LIRF    | dwell     | dwell         | false     | 797   |
+| LIRF    | null      | null          | false     | 6479  |
+| LIRF    | pass      | pass          | false     | 10    |
+| LSZH    | pass      | pass          | true      | 5     |
+| LSZH    | dwell     | null          | true      | 18    |
+| LSZH    | null      | null          | true      | 556   |
+| LSZH    | appear    | null          | true      | 7     |
+| LSZH    | pass      | null          | true      | 17    |
+| LSZH    | pass      | pass          | false     | 338   |
+| LSZH    | null      | null          | false     | 3205  |
+| LSZH    | appear    | appear        | false     | 680   |
+| LSZH    | dwell     | null          | false     | 1     |
+| LSZH    | dwell     | pass          | true      | 1     |
+| LSZH    | dwell     | dwell         | false     | 1992  |
+| LSZH    | pass      | appear        | true      | 1     |
+| LTFM    | null      | null          | false     | 19    |
+STOP (pre-registered): rows outside the 19 stands changed for another reason

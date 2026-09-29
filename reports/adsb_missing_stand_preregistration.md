@@ -143,3 +143,21 @@ in the override, not an effect of the new positions:
 The hypothesis, the 19 stands, the strict identity rule (every column identical,
 no tolerance; only pre-declared run re-assignments exempt), the stop rule, the
 gate and the decision rule are all unchanged. The test is re-run from Step 1.
+
+## Amendment 2 (2026-09-29, before any Step 2 / holdout result)
+
+The re-run after amendment 1 again stopped at Step 1 (43,949 non-override rows
+flagged; still no Step 2). The flagged differences at airports with no override
+stands (EDDM, LIRF, ...) are float noise of ~1e-10 m in the three distance fields.
+The **unchanged** detector shows the same thing: re-run twice against its own cache
+(2026-01-15, 2025-07-20), it differs in 376-916 float cells per day. The set varies
+between runs; all differences are < 1e-6, and there are 0 non-float differences.
+`stand_positions` averages duplicate Gateway rows with a parallel `group_by`, whose
+summation order varies. So the "every column identical, no tolerance" rule cannot be
+met even by the shipped baseline.
+
+**Identity is redefined as the baseline achieves it:** non-float columns
+(coverage, matched, tier, n_pts) exact, and float columns within 1e-6 (the
+criterion §51 B0 used to establish reproduction). The stop rule, the
+run-reassignment exemption, the gate and the decision rule are unchanged. The test
+is re-run from Step 1.
