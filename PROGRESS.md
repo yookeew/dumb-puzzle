@@ -3546,3 +3546,55 @@ NM-unmatched rows the mean correction is +70 s.
 
 Both would need new pre-registrations. Task 3 (freeze deliverables) now
 comes first.
+
+## 50. Plan to 2026-10-10; LightGBM corrector started; ADS-B far-sighting idea logged (2026-09-29)
+
+**Freeze moved to 2026-10-10.** OpenSky / Trino data is not allowed, so
+ADS-B coverage can't be extended with a second source; adsb.lol stays the
+only one.
+
+**LightGBM OOF corrector (in progress).** v2's corrector with the stack's
+LightGBM as the base. Pre-registered in
+`reports/oof_corrector_lgb_preregistration.md`. The gate is decided on the
+stack (lgbcorr + catcorr vs lgb + catcorr, cross-fit), not on LightGBM alone.
+- The 10 LightGBM OOF folds are running locally (22 cores beat Colab's 2 CPUs
+  for LightGBM): `run_oof(engine="lgb", target="mixed", seed=42)` ->
+  `cache/oof/lgb_mixed/`, log `logs/oof_lgb_mixed.log`, ~8-10 h.
+- Gate script: `tests/oof_corrector_lgb_test.py`.
+- Letong's v21 files (`catcorr_mixed_holdout_ev.parquet`,
+  `catcorr_mixed.parquet`) were copied here. They reproduce the v21 stack
+  weights exactly (0.459 / 0.555).
+
+**Idea, not started (Letong to pick up): use ADS-B tracks first seen
+already taxiing.**
+- From the competitors' chat: arnavhm13 matches ~96% of LEMD Jan 2026 and
+  ~70% of Jul 2026 departures to an adsb.lol surface track. CDG is thin
+  (~13%), and IST and FCO-July have nothing.
+- Ours: LEMD matched 96% Jan / 45% Jul, so matching isn't the gap (July
+  may be stricter than theirs). But only 26% / 12% of LEMD rows get a
+  pushback tier. Untiered LEMD tracks are first seen a median ~1 km from
+  the stand, already moving (~14 kt), so there's no pushback to detect.
+- Across all airports, **~66k ranking rows (19%)** are matched, untiered,
+  and first seen moving (`adsb_first_gs >= 5` kt,
+  `adsb_first_own_m >= 200` m). §41's partial estimate only covers first
+  sightings < 1 km.
+- **The floor `T - adsb_first_ts` is valid only for these rows.** On the
+  two non-holdout 2025 days with ADS-B (09-15, 11-15), true taxi fell
+  below it by more than 30 s in 2.8% of untiered-moving rows (EHAM 16%,
+  the rest 0-7%). For tiered rows the rate was 36%: the first sighting is
+  at the stand before pushback, so it isn't a floor.
+- The floor is loose: true taxi is a median ~540 s above it (p10 110-510 s
+  by airport, EHAM negative).
+- v19 predicts below the floor on only ~3% of these rows (EHAM 15%). So a
+  plain clip gains little.
+- **The candidate** is extending §41's partial estimate to far, moving
+  sightings: `est = (T - first_ts) + a_airport + b * first_dist_km`,
+  blended with a fitted weight, excluding EHAM or giving it its own lag.
+  Expected gain ~1-3 board points. Needs its own pre-registration and a
+  holdout check (Jan/Jul 2025 ADS-B is cached).
+
+**Other chat notes.**
+- One team found a second model family hurt them; ours helped (v15, -6).
+- arnavhm13 reports holdout full RMSE Jan 357 / Jul 333, and Jan ~218 with
+  rows > 1 h removed. Their trim is 1 h, ours 5 h, so the trimmed numbers
+  aren't comparable.
