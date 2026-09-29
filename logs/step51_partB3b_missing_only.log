@@ -1,0 +1,50 @@
+run started 2026-09-29 16:06:57
+input data\derived\stands_empirical.csv mtime 2026-09-29 16:03
+override stands (kept, missing in Gateway): 19
+shape: (19, 6)
+| airport | STAND_mvt | n   | spread_m | nearest_gateway | nearest_gateway_m |
+| ---     | ---       | --- | ---      | ---             | ---               |
+| str     | str       | i64 | f64      | str             | f64               |
+|---------|-----------|-----|----------|-----------------|-------------------|
+| EDDF    | V151      | 14  | 4.5      | V157            | 230.7             |
+| EDDF    | V153      | 24  | 1.2      | V157            | 186.1             |
+| EDDF    | V322      | 12  | 13.1     | S310            | 11.3              |
+| LEMD    | 259       | 44  | 5.3      | 221             | 167.3             |
+| LEMD    | 263       | 35  | 1.8      | 221             | 152.8             |
+| LEMD    | T20       | 11  | 8.9      | 16              | 64.8              |
+| LSZH    | 107       | 10  | 0.7      | GAC 107         | 3.8               |
+| LSZH    | 501       | 49  | 2.6      | Stand 507       | 28.3              |
+| LSZH    | F70       | 92  | 3.4      | Stand F 75      | 37.4              |
+| LSZH    | F71       | 126 | 2.8      | Stand F 74      | 33.3              |
+| LSZH    | GA6       | 149 | 33.9     | GAC S4 E        | 62.2              |
+| LSZH    | HAN       | 20  | 1.3      | GAC 101         | 4.7               |
+| LSZH    | I01       | 153 | 2.6      | Stand 101       | 8.2               |
+| LSZH    | I02       | 196 | 2.9      | Stand 102       | 9.2               |
+| LSZH    | I03       | 152 | 2.6      | Stand 103       | 8.5               |
+| LSZH    | I04       | 137 | 1.6      | Stand 104       | 9.4               |
+| LSZH    | I05       | 155 | 2.7      | Stand 105       | 7.5               |
+| LSZH    | MFG       | 35  | 6.0      | GAC 304         | 56.5              |
+| LSZH    | REG       | 23  | 3.2      | REGA Center     | 73.6              |
+rows moving INTO / OUT OF appear/dwell vs the unchanged detector:
+shape: (3, 7)
+| airport | into_2025 Jan/Jul | into_2025 Sep/Nov | into_2026 Jan/Jul | out_2025 Jan/Jul | out_2025 Sep/Nov | out_2026 Jan/Jul |
+| ---     | ---               | ---               | ---               | ---              | ---              | ---              |
+| str     | u32               | u32               | u32               | u32              | u32              | u32              |
+|---------|-------------------|-------------------|-------------------|------------------|------------------|------------------|
+| EDDF    | 359               | 22                | 134               | 7                | 1                | 2                |
+| LEMD    | 1                 | 2                 | 251               | 0                | 0                | 1                |
+| LSZH    | 1869              | 44                | 1678              | 12               | 0                | 15               |
+training days, moved rows: ADS-B error after the shipped lag vs the OOF base on the same rows
+shape: (5, 7)
+| airport | day        | n   | median | rmse  | pm60% | base_rmse |
+| ---     | ---        | --- | ---    | ---   | ---   | ---       |
+| str     | str        | u32 | f64    | f64   | f64   | f64       |
+|---------|------------|-----|--------|-------|-------|-----------|
+| EDDF    | 2025-09-15 | 12  | -13.1  | 55.5  | 83.3  | 125.8     |
+| EDDF    | 2025-11-15 | 10  | -6.1   | 60.5  | 80.0  | 144.1     |
+| LEMD    | 2025-09-15 | 2   | 61.0   | 68.5  | 50.0  | 80.7      |
+| LSZH    | 2025-09-15 | 24  | -10.3  | 229.8 | 79.2  | 201.1     |
+| LSZH    | 2025-11-15 | 20  | -9.7   | 56.1  | 80.0  | 129.7     |
+  2025-09-15: n=38  ADS-B rmse 185.9  base rmse 175.8  median -10.5
+  2025-11-15: n=30  ADS-B rmse 57.6  base rmse 134.7  median -9.0
+run finished 2026-09-29 16:08:55

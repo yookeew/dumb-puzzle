@@ -3833,3 +3833,90 @@ it. A pull would only pay if it enables a new stage that can't be fitted
 without training-month ADS-B data (e.g. Part B's "parked anywhere" tier
 needing more than two days to pass its bar). It shouldn't be justified by
 tightening the current parameters.
+
+### Part B -- raw-point work (local; no Colab needed)
+
+**Data.** The 124 Jan/Jul days are from `fetch_adsb.py` (all `ok`). 2025-09-15
+and 2025-11-15 were re-fetched on Colab with the same fetcher. Their
+previous-day points are 0.16-0.2%, the same readsb trace-history tail as the
+shipped days (2025-07-16 has 0.06%), not the old 12-28% contamination; the
+normaliser drops them. `external-data/adsb_fetch` was renamed to
+`external-data/adsb-fetch` (the path `normalise_adsb.py` reads), and all 126
+days were normalised (`logs/normalise_adsb_s51.log`).
+
+**B0 -- reproduction** (`tests/step51_partB0_detector_repro.py`). The unchanged
+detector on the local points reproduces `cache/adsb_pushback/` exactly on
+**124/126 days**, i.e. every Jan/Jul day the shipped stages use. The two
+re-fetched days differ slightly (09-15: 6 of 6,154 rows change tier; 11-15:
+0 tiers, 5 float cells), so Part B compares them against a fresh detector
+run on the same points.
+
+**Definition change (measured, not assumed).** The spec's parked position,
+"last >= 3 min stationary segment before first motion", picks the
+post-pushback engine-start hold. At stands where Gateway is known good, it
+lands 125-170 m out at EDDM, EGLL, EHAM and LEBL; 5-20 min segments sit
+0.6-1.9 km out (runway/de-icing holds). Segments the run **starts** in are on
+the stand: median 4-12 m from Gateway, 80-98% within 30 m. So "parked" = the
+>= 3 min stationary segment the run starts in (first sample within 30 s of
+the segment start). Script `tests/step51_partB_stands_and_parked.py`, log
+`logs/step51_partB_stands_and_parked.log`. Pass 1 re-derives the detector's
+matching and asserts identical tiers on all 346,190 matched runs.
+
+**B1 (§51 section D) -- the Screen-1 population really is first seen
+taxiing.** Only 0.3-2.3% of those runs start parked (LSZH 12-20%).
+- There's no systematic naming pattern at EDDF, EDDM, EGLL, LEMD or LFPG.
+- **LSZH is a genuine renumbering.** STAND_mvt I01-I05 parks 7-9 m from
+  Gateway "Stand 101-105"; F70/F71 park at "Stand F 75/F 74"; 501 at
+  "Stand 506/507"; HAN and 101-111 at "GAC 10x". These stand IDs are
+  unresolved today, which is why they fall in the Screen-1 population.
+- Minor pairs: EHAM Y74 -> Y72, EGLL 237 -> 236, EDDF V322 -> S310.
+
+**B2 -- empirical stand positions.** 573 (airport, STAND_mvt) with >= 10
+parked runs; 536 kept (spread <= 40 m). Written to
+`data/derived/stands_empirical.csv` (ODbL derived database; DATA_SOURCES.md
+row and `data/derived/README.md` added).
+- **Gateway is right where both exist:** median offset 4-8 m everywhere;
+  within 30 m for 80-100% of stands (LSZH 68%).
+- **In Gateway's stands, not ours:** 19 kept stands (LSZH 13 as above; LEMD
+  259/263/T20; EDDF V151/V153/V322).
+- **LSZH B/D/G/C/T and EDDF E/K get no empirical position at all.** No run
+  starts parked there with n >= 10: transponders only come on after the
+  aircraft has left. That fits a reception or transponder-procedure shadow
+  (first sightings 0.4-1.5 km out, Step 1), not displaced coordinates. It
+  can't be fixed from ADS-B.
+- **EDDF Terminal 3 (J/H) is also unobservable,** with no parked runs.
+
+**B3 -- detector with empirical positions.**
+- **Full override** (missing, or Gateway > 50 m away; 75 stands): rows moving
+  into appear/dwell are 3,957 in 2026 (LSZH 2,104), 3,656 in Jan/Jul 2025 and
+  117 on the training days. On those 117, ADS-B RMSE is 221 s against the OOF
+  base's 148 s. Rows at "disagreeing" stands are biased early (median -170
+  to -360 s at EDDM, EGLL, EHAM and LEBL): the 50 m threshold catches stands
+  where the run-start segment isn't the stand.
+- **Missing-only override** (19 stands; `tests/step51_partB3b_missing_only.py`):
+
+| | into appear/dwell | out of appear/dwell |
+|---|---|---|
+| 2026 ranking | **2,063** (LSZH 1,678, LEMD 251, EDDF 134) | 18 |
+| Jan/Jul 2025 | 2,229 | 19 |
+| training days | 68 | -- |
+
+  Training-day accuracy after the shipped lags: median -10 s, ~80% within
+  +-60 s. RMSE is 57.6 vs base 134.7 on 11-15 and 185.9 vs 175.8 on 09-15
+  (one LSZH day carries it: 229.8 vs 201.1, n = 24). That's in line with the
+  existing appear/dwell accuracy (§37: appear 119 s, dwell 225 s).
+
+**B4 -- "parked anywhere" tier: FAIL.** Coverage of rows still without
+appear/dwell is 0-3% per airport (14 rows over both days). Cross-day-lag RMSE
+is 283 / 126 s against the OOF base's 112 / 95 s. No tows were detected. The
+tier barely exists, because these runs don't start parked anywhere.
+
+**Recommendation.** One candidate: the **missing-stand override**. Its
+mechanism is clear (stand IDs absent from Gateway, most of them an LSZH
+renumbering). It moves ~2,060 ranking rows and ~2,230 holdout rows, so the
+holdout gate has ample rows. Scaled from v16's -19 on 94.5k blended rows, it's
+worth roughly -0.4 on the leaderboard. Everything else from Part B is
+closed: the full override (early bias), B4, and LSZH B/D/G/C/T / EDDF E/K/J/H
+(unobservable). The pre-registration would re-run the §39/§43 blend + quality
+gate (plus §47 trimmed) on the missing-only detector output. It waits for
+go-ahead.
