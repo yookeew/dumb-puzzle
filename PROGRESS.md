@@ -3920,3 +3920,37 @@ closed: the full override (early bias), B4, and LSZH B/D/G/C/T / EDDF E/K/J/H
 (unobservable). The pre-registration would re-run the §39/§43 blend + quality
 gate (plus §47 trimmed) on the missing-only detector output. It waits for
 go-ahead.
+
+### Missing-stand override -- pre-registered gate: STOPPED at Step 1 (awaiting decision)
+
+Pre-registration `reports/adsb_missing_stand_preregistration.md` (5a091ab,
+before any result). Test `tests/adsb_missing_stand_test.py`; logs
+`logs/adsb_missing_stand_test_run{1,2,3}_stopped.log`. The opt-in detector path
+is `src/link/adsb_pushback.py --missing-stands` -> `cache/adsb_pushback_ms/`;
+the default output is unchanged. **Step 2 (the gate) has not run; no holdout
+result has been seen.**
+
+The Step 1 identity check (rows outside the 19 stands must be unchanged) stopped
+the test three times:
+
+| run | non-override rows flagged | cause | action |
+|---|---|---|---|
+| 1 | 151,115 | appended override rows shifted each airport's projection origin (lat0), and the merge reordered rows | amendment 1 (ce426fe): lat0 from the Gateway table only; order preserved |
+| 2 | 43,949 | float noise ~1e-10 m. The **unchanged** detector differs from its own cache in 376-916 float cells per day (parallel group_by mean), so "no tolerance" is unsatisfiable | amendment 2 (23dd15f): floats within 1e-6 (B0's criterion), non-float exact |
+| 3 | 251 | run hand-over **chains**: a movement at an override stand takes run A from Y; Y takes run B from Z; Z changes | stopped; decision needed |
+
+**Run 3 in detail.**
+- Of 700,513 detector rows, 7,485 are at the 19 stands (5,878 changed).
+- 1,005 non-override rows changed because their run went directly to an
+  override-stand movement. The pre-registered exemption covers these.
+- The other 246 (Jan/Jul days; plus 5 on 2025-11-15) are **all** downstream
+  links of a chain that starts at an override-stand movement. A run-graph
+  traversal gives 246/246 chain members and 0 other. They are confined to EDDF,
+  LEMD and LSZH (132 / 12 / 107 rows, mostly matched-but-untiered).
+- The pre-registered exemption named only the first link. Extending it to
+  whole chains would be amendment 3, a change to the rule rather than a bug
+  fix, so it waits for a decision.
+
+Note: the §51 B3/B3b exploration counts (2,063 ranking rows moved, etc.) were
+computed with the pre-amendment-1 override. They carry the lat0 shift, so they
+are approximate.
