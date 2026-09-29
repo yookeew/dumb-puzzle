@@ -3546,3 +3546,143 @@ NM-unmatched rows the mean correction is +70 s.
 
 Both would need new pre-registrations. Task 3 (freeze deliverables) now
 comes first.
+
+## 50. Three cheap screens: ADS-B taxiing floor, neighbour residual, LTFM/EGLL
+    anatomy -- all three FAIL; no pre-registration follows (2026-09-29)
+
+No training, no stage, no submission. Explored on training-month data and the
+CatBoost OOF folds (`cache/oof/cat_mixed/`) only; Jan/Jul 2025 labels were read
+only in Screen 3, which analyses the already-scored v21 gate eval frame. No
+neighbour DEP `TAXITIME`/`BLOCK_TIME` is used anywhere. Logs were checked fresh
+(run-start/finish stamps inside each log, file mtimes 2026-09-29 12:04-12:11);
+`cache/features/` postdates `build_features.py`/`export_model_inputs.py`. (The
+`assert_feat_dir_fresh` helper the S26 memory refers to is no longer in
+`tests/_harness.py`; checked by hand.)
+
+### Screen 1 -- ADS-B tracks first seen already taxiing: FAIL
+`tests/screen1_adsb_taxiing_floor.py`, `logs/screen1_adsb_taxiing_floor.log`.
+
+**Population** = `adsb_matched` & tier not appear/dwell & not
+`adsb_partial.mask()`. Overlap with appear/dwell and with partial is 0 / 0 (asserted).
+
+| | DEP | POP | % | LIRF | no stand coords | >= 1 km |
+|---|---|---|---|---|---|---|
+| ranking 2026 | 344,841 | 53,473 | 15.5 | 4,818 | 9,360 | 39,295 |
+| 2025 training days | 11,253 | 2,058 | 18.3 | 229 | 252 | 1,577 |
+| 2025 Jan/Jul days (counts only) | 344,419 | 44,419 | 12.9 | 9,715 | 6,305 | 28,399 |
+
+99% of POP is tier-null (the run never reaches the stand). 2026 is concentrated
+at EDDF (41% of its DEP), LEMD 27%, LSZH 24%.
+
+**Floor `max(pred, L - m)` on 2025-09-15 / 2025-11-15 (n = 2,058, no labels > 5 h,
+so full = trimmed):**
+- Match-error proxy (taxi < L - 60): 6.75% pooled (7.2%/4.2% for >= 1 km, 16-20%
+  with no stand coords, 0% LIRF). Above the 5% bar.
+- Rows with pred < L - m: 7.8 / 6.7 / 5.5% for m = 0 / 60 / 120. They carry only
+  3-4% of the population's squared error.
+- SSE change, in 1e6 s^2: **+195 (09-15) and +70 (11-15) at m = 60**. Every m is
+  worse on both days. Population RMSE goes 226 -> 478 and 200 -> 337.
+- **Mechanism:** of the rows the floor lifts, **84% have taxi < L - 60**. When L
+  exceeds the prediction, L is usually wrong, not the model. It is not the
+  previous arrival's taxi-in: only 3% of those runs start before the inbound's
+  in-block. They are long runs (median 76 points vs 22), with median L 1,027 s
+  vs taxi 748 s.
+- **Unseen part (taxi - L)** rises with first-sighting distance (median 450 s at
+  < 1 km, 770-860 s beyond 2 km). It is flat and noisy in speed. "L + fitted
+  unseen", cross-fit between the two days, is much worse than the base (RMSE
+  527/685 vs 200/226). The optimal nudge weight is 0.01-0.02, i.e. nothing.
+
+Two days is a small sample, but the sign is uniform on both days, at every
+margin, and in every sub-population except LIRF (which is neutral).
+
+### Screen 2 -- neighbour residual: FAIL (consistent but tiny, and drifts)
+`tests/screen2_neighbour_residual.py`, `logs/screen2_neighbour_residual.log`.
+
+**Pre-check.** No production feature measures neighbour taxi durations. Family 6
+`q_ahead_mean_wait` (S23, off, rejected) is duration-adjacent (elapsed wait of
+the queue ahead), not a residual. So the screen went ahead.
+
+**Features.** `r_j = clip(aobt3_taxi_j - oof_pred_j, +-1800)` over
+same-airport DEP j != i within +-30/60 min of T_i: mean, median, count; a
+same-runway variant; and arrivals' taxi-in residual against a LOMO
+(airport, runway) median. Coverage is 99.5-100%; median 35 neighbours at +-30
+min and 69 at +-60 min.
+
+**Per month (10 training months):** the sign is very stable, and **negative**
+for the departure features. Trimmed correlation ranges -0.009 to -0.085 (10/10
+months for nb30, rw30, rw60; 9/10 for nb60). Arrival taxi-in is positive (10/10)
+but weaker (mean r 0.03). A negative sign means that when neighbours'
+`T - AOBT_3` runs above the model, the row's own true taxi runs *below* it. That
+reads as AOBT_3 timing error shared across the window, which the model
+over-trusts through its own `aobt3_taxi`, rather than "the airport is slow now".
+
+**Transfer (decile means, fit on 9 months, applied to the 10th), pooled:**
+best `rw30_mean` **-0.18 s** trimmed / -0.17 s full; nb30 mean/median -0.10;
+everything else <= 0.07 s. Clipping the residual in the mapping changes nothing.
+Per airport, LEBL -1.1, EDDM -0.8, LTFM -0.8, LIRF +0.9. NM-unmatched rows
+(no own AOBT_3, 1% of rows) gain -1.2 s trimmed on their own. That is the only
+place it does anything, and pooled it's worth ~0.01 s. Against §20's 10.8 s
+(airport, day, hour) ceiling this recovers ~2%.
+
+**Drift, ranking 2026 (full-refit preds) vs 2025 training months (OOF preds):**
+5 airports exceed 0.25 sd on every departure variant (LFPG +0.55-0.67, LSZH
+-0.46 to -0.63, LTFM -0.34 to -0.45, EDDM -0.29 to -0.41, EHAM +0.26 to +0.50;
+EHAM's sd also doubles). Jan/Jul 2025 with 10-month-fit preds (no labels) drift
+much less except LFPG (-0.41). So most of the 2026 shift comes from OOF vs
+full-refit preds plus the 2026 AOBT_3 feed, which makes the feature
+distribution-unstable exactly where a corrector would use it.
+
+Fails the gain criterion (needs >= 1 s) by ~5x and fails drift. The sign
+criterion passes.
+
+### Screen 3 -- LTFM and EGLL error anatomy (§45 item 2)
+`tests/screen3_ltfm_egll_anatomy.py`, `logs/screen3_ltfm_egll_anatomy.log`.
+Frame: `cache/eval/catcorr_mixed_holdout_ev.parquet` (the v21 gate's corrected
+CatBoost; LTFM has no ADS-B stage, EGLL's touches ~1%).
+
+| | LTFM | EGLL |
+|---|---|---|
+| RMSE (full = trimmed, **0 labels > 5 h**) | 265.6 | 281.7 |
+| share of all-airport SSE | 8.5% | 8.3% |
+| top-10 / 100 / 1000 rows, % of SSE | 7.0 / 18.1 / 43.6 | 14.6 / 33.9 / 54.5 |
+| Jan / Jul RMSE (mean residual) | 224.5 (-10) / 296.0 (+52) | 248.1 (-34) / 309.8 (+8) |
+| NM-unmatched: % rows / % SSE / RMSE | 1.4 / 8.5 / 653 | **1.2 / 20.6 / 1,187** |
+| echo (abs(block - sched) < 30 s): % rows / % SSE | 5.1 / 3.6 | 4.2 / 2.2 |
+| worst day | 2025-07-26: 8.6% of SSE | 2025-07-30: 12.4% of SSE |
+
+- **The error is event-driven, not structural.** At LTFM, four July days
+  (07-26, 07-21, 07-13, 07-23) give 22% of SSE, with mean residual +110 to
+  +170 s. The top rows are real 1.5-2 h taxis (mostly THY) on 07-26. At EGLL,
+  07-30 and 07-06 give 21% of SSE. Its top-8 rows are all NM-unmatched flights
+  that pushed back near schedule and taxied 2-3 h (e.g. SHT14L 11,167 s). EGLL's
+  NM-unmatched rate is 1.63% in July 2025 vs 0.2-0.7% in most months: on
+  disrupted days more flights lose the NM match, and those rows also lack
+  `aobt3_taxi`.
+- **§18 transfer test replicates.** Jan-vs-Jul correlation of mean residual is
+  negative for hour, runway and operator at both airports (LTFM runway -0.86,
+  hour -0.55; EGLL runway -0.70). The only positive one is LTFM stand group
+  (+0.28, 10 groups). Applying one month's shrunk group means to the other makes
+  RMSE **worse in every case** (+1.0 to +16.0 s).
+- **No recording-pattern anomaly** of the §44 kind. There are no labels over
+  5 h, no near-24 h offsets, and no block+1 day pattern (EGLL's 11 NM-unmatched
+  labels over 2 h share the schedule date but are genuine 2-3 h holds). Batch
+  stamps are <= 0.2%. The :00 s block stamp share (~8.3%) is flat by month and
+  its error is average. Label heaping is none (the top value is 0.4%). Flag
+  shares are flat across all 12 months. EGLL's block == AOBT_3 (+-30 s, 9.4%) is
+  its best-predicted subset (145 s).
+- **Candidate lever: none.** The only mechanism found (a disruption day raises
+  everyone's taxi and strips NM matches) is exactly what Screen 2 measured, and
+  it neither transferred nor survived drift.
+
+### Takeaways
+- ADS-B work has now exhausted the usable track types. The "already taxiing"
+  runs are unsafe as a floor because their start time isn't a lower bound often
+  enough.
+- The residual "how is the airport running" signal is real in sign but ~0.2 s
+  in size, and it's measured through AOBT_3, whose feed shifts in 2026. §20's
+  10.8 s hourly ceiling is mostly within-hour, per-flight noise from the
+  model's point of view.
+- LTFM/EGLL are "hard days", not "wrong labels". There's nothing to special-case.
+- **Recommendation:** no pre-registration from these screens. Time goes to the
+  freeze deliverables (§45 item 4 / §46 plan item 4: REPRODUCE.md, the
+  DATA_SOURCES check, the public GPLv3 repo, the JOAS draft).

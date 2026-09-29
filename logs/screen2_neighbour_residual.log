@@ -1,0 +1,286 @@
+run started 2026-09-29 12:08:40
+  input cache\features\train2025.parquet  mtime 2026-09-28 18:31
+  input cache\features\labels2025.parquet  mtime 2026-09-28 18:31
+  input cache\features\ranking.parquet  mtime 2026-09-28 18:31
+  input cache\eval\cat_mixed_rank.parquet  mtime 2026-09-28 23:37
+  input cache\oof\cat_mixed\fold=2025-02.parquet  mtime 2026-09-28 21:49
+
+==============================================================================
+BUILD
+==============================================================================
+training-month DEP rows with OOF pred: 1,740,628; aobt3_taxi present 99.0%; aobt3_taxi median 957 s
+arrivals (training months, LOMO medians): 1,738,428
+  EDDF: 193,311 query rows, 191,954 neighbours, 193,366 arrivals
+  EDDM: 140,243 query rows, 139,470 neighbours, 140,276 arrivals
+  EGLL: 199,336 query rows, 198,388 neighbours, 199,298 arrivals
+  EHAM: 207,002 query rows, 203,726 neighbours, 206,769 arrivals
+  LEBL: 150,719 query rows, 149,353 neighbours, 150,207 arrivals
+  LEMD: 176,914 query rows, 176,276 neighbours, 175,783 arrivals
+  LFPG: 199,940 query rows, 197,047 neighbours, 199,352 arrivals
+  LIRF: 134,176 query rows, 133,085 neighbours, 133,892 arrivals
+  LSZH: 112,561 query rows, 110,794 neighbours, 112,246 arrivals
+  LTFM: 226,426 query rows, 223,438 neighbours, 227,239 arrivals
+analysis rows 1,740,339; monster labels > 5 h: 60
+feature coverage (non-null %) and median neighbour counts:
+shape: (1, 8)
+| nb30_mean | nb30_median | nb60_mean | nb60_median | rw30_mean | rw60_mean | arr30_mean | arr60_mean |
+| ---       | ---         | ---       | ---         | ---       | ---       | ---        | ---        |
+| f64       | f64         | f64       | f64         | f64       | f64       | f64        | f64        |
+|-----------|-------------|-----------|-------------|-----------|-----------|------------|------------|
+| 99.895    | 99.895      | 99.968    | 99.968      | 99.489    | 99.749    | 99.915     | 99.979     |
+shape: (1, 6)
+| nb30_n | nb60_n | rw30_n | rw60_n | arr30_n | arr60_n |
+| ---    | ---    | ---    | ---    | ---     | ---     |
+| f64    | f64    | f64    | f64    | f64     | f64     |
+|--------|--------|--------|--------|---------|---------|
+| 35.000 | 69.000 | 23.000 | 44.000 | 31.000  | 63.000  |
+
+==============================================================================
+PER-MONTH CORRELATION AND SLOPE WITH OWN OOF RESIDUAL e = taxi - oof_pred
+==============================================================================
+shape: (16, 8)
+| feat        | set  | mean_corr | min_corr | max_corr | mean_slope | months_pos | months_neg |
+| ---         | ---  | ---       | ---      | ---      | ---        | ---        | ---        |
+| str         | str  | f64       | f64      | f64      | f64        | u32        | u32        |
+|-------------|------|-----------|----------|----------|------------|------------|------------|
+| arr30_mean  | full | 0.023     | -0.002   | 0.108    | 0.071      | 9          | 1          |
+| arr30_mean  | trim | 0.024     | 0.003    | 0.110    | 0.072      | 10         | 0          |
+| arr60_mean  | full | 0.027     | 0.005    | 0.133    | 0.104      | 10         | 0          |
+| arr60_mean  | trim | 0.028     | 0.002    | 0.135    | 0.102      | 10         | 0          |
+| nb30_mean   | full | -0.032    | -0.061   | -0.010   | -0.049     | 0          | 10         |
+| nb30_mean   | trim | -0.032    | -0.062   | -0.009   | -0.047     | 0          | 10         |
+| nb30_median | full | -0.030    | -0.059   | -0.009   | -0.049     | 0          | 10         |
+| nb30_median | trim | -0.031    | -0.059   | -0.008   | -0.047     | 0          | 10         |
+| nb60_mean   | full | -0.021    | -0.059   | 0.003    | -0.036     | 1          | 9          |
+| nb60_mean   | trim | -0.021    | -0.059   | 0.004    | -0.034     | 1          | 9          |
+| nb60_median | full | -0.018    | -0.052   | 0.008    | -0.033     | 1          | 9          |
+| nb60_median | trim | -0.018    | -0.052   | 0.010    | -0.031     | 1          | 9          |
+| rw30_mean   | full | -0.041    | -0.084   | -0.022   | -0.059     | 0          | 10         |
+| rw30_mean   | trim | -0.043    | -0.085   | -0.022   | -0.058     | 0          | 10         |
+| rw60_mean   | full | -0.029    | -0.081   | -0.007   | -0.045     | 0          | 10         |
+| rw60_mean   | trim | -0.030    | -0.082   | -0.006   | -0.043     | 0          | 10         |
+
+per-month trimmed corr, main features:
+shape: (10, 6)
+| ym      | nb30_mean | nb60_mean | nb60_median | rw60_mean | arr60_mean |
+| ---     | ---       | ---       | ---         | ---       | ---        |
+| str     | f64       | f64       | f64         | f64       | f64        |
+|---------|-----------|-----------|-------------|-----------|------------|
+| 2025-02 | -0.062    | -0.059    | -0.052      | -0.082    | 0.135      |
+| 2025-03 | -0.019    | -0.011    | -0.003      | -0.017    | 0.012      |
+| 2025-04 | -0.022    | -0.003    | -0.002      | -0.019    | 0.026      |
+| 2025-05 | -0.033    | -0.017    | -0.016      | -0.024    | 0.011      |
+| 2025-06 | -0.009    | 0.004     | 0.010       | -0.006    | 0.002      |
+| 2025-08 | -0.023    | -0.013    | -0.015      | -0.018    | 0.008      |
+| 2025-09 | -0.033    | -0.022    | -0.024      | -0.023    | 0.020      |
+| 2025-10 | -0.039    | -0.024    | -0.014      | -0.025    | 0.030      |
+| 2025-11 | -0.032    | -0.023    | -0.028      | -0.035    | 0.024      |
+| 2025-12 | -0.053    | -0.044    | -0.038      | -0.050    | 0.008      |
+
+==============================================================================
+TRANSFER: decile-means mapping fit on 9 months, applied to the 10th
+==============================================================================
+pooled (out-of-month) RMSE change, s (negative = better):
+shape: (16, 8)
+| feat        | clip_e | rmse_full | d_full | rmse_trim | d_trim | months_trim_better | months_full_better |
+| ---         | ---    | ---       | ---    | ---       | ---    | ---                | ---                |
+| str         | bool   | f64       | f64    | f64       | f64    | u32                | u32                |
+|-------------|--------|-----------|--------|-----------|--------|--------------------|--------------------|
+| rw30_mean   | false  | 258.851   | -0.170 | 231.932   | -0.182 | 9                  | 9                  |
+| nb30_median | false  | 258.851   | -0.103 | 231.932   | -0.107 | 9                  | 10                 |
+| nb30_mean   | false  | 258.851   | -0.097 | 231.932   | -0.100 | 9                  | 9                  |
+| rw60_mean   | false  | 258.851   | -0.067 | 231.932   | -0.072 | 8                  | 8                  |
+| nb60_mean   | false  | 258.851   | -0.026 | 231.932   | -0.023 | 7                  | 8                  |
+| arr60_mean  | false  | 258.851   | -0.018 | 231.932   | -0.017 | 6                  | 7                  |
+| arr30_mean  | false  | 258.851   | -0.008 | 231.932   | -0.011 | 4                  | 4                  |
+| nb60_median | false  | 258.851   | -0.011 | 231.932   | -0.005 | 6                  | 6                  |
+| rw30_mean   | true   | 258.851   | -0.172 | 231.932   | -0.190 | 10                 | 10                 |
+| nb30_median | true   | 258.851   | -0.108 | 231.932   | -0.116 | 9                  | 9                  |
+| nb30_mean   | true   | 258.851   | -0.102 | 231.932   | -0.109 | 8                  | 10                 |
+| rw60_mean   | true   | 258.851   | -0.070 | 231.932   | -0.082 | 9                  | 9                  |
+| nb60_mean   | true   | 258.851   | -0.041 | 231.932   | -0.045 | 8                  | 8                  |
+| nb60_median | true   | 258.851   | -0.026 | 231.932   | -0.028 | 8                  | 7                  |
+| arr60_mean  | true   | 258.851   | -0.021 | 231.932   | -0.024 | 7                  | 7                  |
+| arr30_mean  | true   | 258.851   | -0.011 | 231.932   | -0.015 | 6                  | 6                  |
+
+per-month trimmed change, plain decile means (primary):
+shape: (10, 9)
+| ym      | nb30_mean | nb30_median | nb60_mean | nb60_median | rw30_mean | rw60_mean | arr30_mean | arr60_mean |
+| ---     | ---       | ---         | ---       | ---         | ---       | ---       | ---        | ---        |
+| str     | f64       | f64         | f64       | f64         | f64       | f64       | f64        | f64        |
+|---------|-----------|-------------|-----------|-------------|-----------|-----------|------------|------------|
+| 2025-02 | -0.210    | -0.247      | -0.064    | -0.025      | -0.484    | -0.255    | 0.002      | -0.061     |
+| 2025-03 | -0.033    | -0.010      | 0.074     | 0.103       | -0.085    | 0.056     | 0.028      | 0.040      |
+| 2025-04 | -0.084    | -0.066      | -0.029    | -0.024      | -0.192    | -0.079    | -0.081     | -0.080     |
+| 2025-05 | -0.199    | -0.221      | -0.044    | -0.054      | -0.262    | -0.093    | 0.020      | 0.022      |
+| 2025-06 | -0.061    | -0.014      | -0.042    | 0.056       | -0.103    | -0.030    | 0.014      | 0.022      |
+| 2025-08 | 0.071     | 0.019       | 0.107     | 0.075       | 0.070     | 0.083     | 0.028      | 0.066      |
+| 2025-09 | -0.017    | -0.011      | 0.017     | 0.022       | -0.062    | -0.009    | -0.041     | -0.043     |
+| 2025-10 | -0.175    | -0.172      | -0.108    | -0.095      | -0.226    | -0.090    | -0.069     | -0.089     |
+| 2025-11 | -0.125    | -0.142      | -0.035    | -0.002      | -0.233    | -0.149    | -0.016     | -0.043     |
+| 2025-12 | -0.222    | -0.254      | -0.120    | -0.123      | -0.325    | -0.193    | 0.001      | -0.024     |
+per-month full change, plain decile means:
+shape: (10, 9)
+| ym      | nb30_mean | nb30_median | nb60_mean | nb60_median | rw30_mean | rw60_mean | arr30_mean | arr60_mean |
+| ---     | ---       | ---         | ---       | ---         | ---       | ---       | ---        | ---        |
+| str     | f64       | f64         | f64       | f64         | f64       | f64       | f64        | f64        |
+|---------|-----------|-------------|-----------|-------------|-----------|-----------|------------|------------|
+| 2025-02 | -0.206    | -0.241      | -0.063    | -0.024      | -0.476    | -0.251    | 0.005      | -0.058     |
+| 2025-03 | -0.047    | -0.024      | 0.059     | 0.091       | -0.101    | 0.038     | 0.027      | 0.042      |
+| 2025-04 | -0.091    | -0.074      | -0.033    | -0.028      | -0.194    | -0.086    | -0.081     | -0.080     |
+| 2025-05 | -0.132    | -0.144      | -0.020    | -0.031      | -0.177    | -0.059    | 0.020      | 0.019      |
+| 2025-06 | -0.051    | -0.015      | -0.029    | 0.038       | -0.072    | -0.007    | 0.022      | -0.001     |
+| 2025-08 | 0.040     | -0.012      | 0.076     | 0.049       | 0.037     | 0.058     | 0.024      | 0.060      |
+| 2025-09 | -0.045    | -0.043      | -0.006    | 0.001       | -0.063    | -0.012    | -0.047     | -0.054     |
+| 2025-10 | -0.177    | -0.174      | -0.112    | -0.099      | -0.227    | -0.091    | -0.069     | -0.089     |
+| 2025-11 | -0.090    | -0.102      | -0.038    | -0.010      | -0.220    | -0.139    | -0.009     | -0.024     |
+| 2025-12 | -0.226    | -0.259      | -0.124    | -0.127      | -0.330    | -0.197    | 0.000      | -0.025     |
+
+best primary feature by pooled trimmed gain: rw30_mean (-0.18 s trimmed, -0.17 s full)
+per airport, rw30_mean, pooled out-of-month (plain decile means):
+by own AOBT_3 availability (NM-unmatched rows have no aobt3_taxi of their own):
+shape: (2, 6)
+| nm_unmatched | n       | rmse_full | d_full | d_trim | corr   |
+| ---          | ---     | ---       | ---    | ---    | ---    |
+| bool         | u32     | f64       | f64    | f64    | f64    |
+|--------------|---------|-----------|--------|--------|--------|
+| false        | 1723432 | 212.084   | -0.146 | -0.147 | -0.037 |
+| true         | 16907   | 1520.543  | -0.895 | -1.209 | -0.096 |
+shape: (10, 5)
+| ADEP_mvt | n      | rmse_full | d_full | d_trim |
+| ---      | ---    | ---       | ---    | ---    |
+| str      | u32    | f64       | f64    | f64    |
+|----------|--------|-----------|--------|--------|
+| EDDF     | 193311 | 167.805   | -0.091 | -0.091 |
+| EDDM     | 140243 | 169.218   | -0.845 | -0.845 |
+| EGLL     | 199336 | 227.309   | 0.076  | 0.076  |
+| EHAM     | 206999 | 158.710   | 0.051  | 0.051  |
+| LEBL     | 150715 | 193.955   | -1.136 | -1.136 |
+| LEMD     | 176914 | 176.785   | -0.546 | -0.546 |
+| LFPG     | 199901 | 241.338   | -0.130 | -0.133 |
+| LIRF     | 134176 | 548.147   | 0.656  | 0.883  |
+| LSZH     | 112320 | 311.350   | -0.077 | -0.172 |
+| LTFM     | 226424 | 278.732   | -0.756 | -0.756 |
+
+==============================================================================
+DRIFT: 2025 training months (OOF preds) vs ranking 2026 (full-refit CatBoost preds)
+==============================================================================
+ranking DEP rows with pred: 344,841; aobt3_taxi present 98.5%; arrivals 344,627
+  EDDF: 36,317 query rows, 35,896 neighbours, 36,253 arrivals
+  EDDM: 25,966 query rows, 25,728 neighbours, 25,935 arrivals
+  EGLL: 39,840 query rows, 39,592 neighbours, 39,837 arrivals
+  EHAM: 38,182 query rows, 36,976 neighbours, 38,135 arrivals
+  LEBL: 30,080 query rows, 29,638 neighbours, 29,973 arrivals
+  LEMD: 36,954 query rows, 36,716 neighbours, 37,093 arrivals
+  LFPG: 39,872 query rows, 39,138 neighbours, 39,728 arrivals
+  LIRF: 26,899 query rows, 26,516 neighbours, 26,822 arrivals
+  LSZH: 23,150 query rows, 22,491 neighbours, 23,088 arrivals
+  LTFM: 47,581 query rows, 46,860 neighbours, 47,763 arrivals
+  EDDF: 36,830 query rows, 36,231 neighbours, 36,755 arrivals
+  EDDM: 27,091 query rows, 26,854 neighbours, 27,045 arrivals
+  EGLL: 40,210 query rows, 39,744 neighbours, 40,198 arrivals
+  EHAM: 40,949 query rows, 40,141 neighbours, 40,932 arrivals
+  LEBL: 28,985 query rows, 28,489 neighbours, 28,872 arrivals
+  LEMD: 35,328 query rows, 35,019 neighbours, 35,308 arrivals
+  LFPG: 39,590 query rows, 38,713 neighbours, 39,451 arrivals
+  LIRF: 26,528 query rows, 26,131 neighbours, 26,469 arrivals
+  LSZH: 22,289 query rows, 21,812 neighbours, 22,259 arrivals
+  LTFM: 46,539 query rows, 45,882 neighbours, 46,643 arrivals
+
+nb30_mean:
+shape: (10, 7)
+| ADEP_mvt | shift_sd_rank2026 | shift_sd_JanJul2025 | sd_ratio_rank2026 | sd_ratio_JanJul2025 | flag_rank2026 | flag_JanJul2025 |
+| ---      | ---               | ---                 | ---               | ---                 | ---           | ---             |
+| str      | f64               | f64                 | f64               | f64                 | bool          | bool            |
+|----------|-------------------|---------------------|-------------------|---------------------|---------------|-----------------|
+| EDDF     | -0.072            | -0.091              | 1.724             | 1.044               | false         | false           |
+| EDDM     | -0.366            | -0.104              | 1.506             | 1.159               | true          | false           |
+| EGLL     | -0.037            | -0.221              | 0.990             | 1.176               | false         | false           |
+| EHAM     | 0.367             | 0.123               | 1.732             | 1.177               | true          | false           |
+| LEBL     | -0.052            | -0.036              | 1.190             | 1.003               | false         | false           |
+| LEMD     | -0.162            | -0.175              | 1.155             | 1.167               | false         | false           |
+| LFPG     | 0.551             | -0.410              | 1.021             | 1.250               | true          | true            |
+| LIRF     | -0.073            | -0.167              | 1.226             | 1.270               | false         | false           |
+| LSZH     | -0.510            | -0.066              | 1.370             | 1.067               | true          | false           |
+| LTFM     | -0.384            | -0.060              | 1.209             | 0.958               | true          | false           |
+
+nb60_mean:
+shape: (10, 7)
+| ADEP_mvt | shift_sd_rank2026 | shift_sd_JanJul2025 | sd_ratio_rank2026 | sd_ratio_JanJul2025 | flag_rank2026 | flag_JanJul2025 |
+| ---      | ---               | ---                 | ---               | ---                 | ---           | ---             |
+| str      | f64               | f64                 | f64               | f64                 | bool          | bool            |
+|----------|-------------------|---------------------|-------------------|---------------------|---------------|-----------------|
+| EDDF     | -0.077            | -0.105              | 1.807             | 1.020               | false         | false           |
+| EDDM     | -0.407            | -0.114              | 1.561             | 1.163               | true          | false           |
+| EGLL     | -0.045            | -0.268              | 0.992             | 1.212               | false         | true            |
+| EHAM     | 0.465             | 0.158               | 1.930             | 1.237               | true          | false           |
+| LEBL     | -0.070            | -0.048              | 1.244             | 1.020               | false         | false           |
+| LEMD     | -0.193            | -0.211              | 1.149             | 1.204               | false         | false           |
+| LFPG     | 0.625             | -0.465              | 1.022             | 1.281               | true          | true            |
+| LIRF     | -0.084            | -0.185              | 1.265             | 1.304               | false         | false           |
+| LSZH     | -0.629            | -0.084              | 1.474             | 1.076               | true          | false           |
+| LTFM     | -0.445            | -0.068              | 1.228             | 0.938               | true          | false           |
+
+nb60_median:
+shape: (10, 7)
+| ADEP_mvt | shift_sd_rank2026 | shift_sd_JanJul2025 | sd_ratio_rank2026 | sd_ratio_JanJul2025 | flag_rank2026 | flag_JanJul2025 |
+| ---      | ---               | ---                 | ---               | ---                 | ---           | ---             |
+| str      | f64               | f64                 | f64               | f64                 | bool          | bool            |
+|----------|-------------------|---------------------|-------------------|---------------------|---------------|-----------------|
+| EDDF     | 0.044             | -0.074              | 1.536             | 0.926               | false         | false           |
+| EDDM     | -0.287            | -0.034              | 1.726             | 1.239               | true          | false           |
+| EGLL     | -0.076            | -0.104              | 0.997             | 1.044               | false         | false           |
+| EHAM     | 0.499             | 0.076               | 2.523             | 1.210               | true          | false           |
+| LEBL     | -0.066            | -0.045              | 1.297             | 1.051               | false         | false           |
+| LEMD     | -0.193            | -0.204              | 1.104             | 1.192               | false         | false           |
+| LFPG     | 0.665             | -0.410              | 1.001             | 1.225               | true          | true            |
+| LIRF     | -0.054            | -0.179              | 1.234             | 1.271               | false         | false           |
+| LSZH     | -0.583            | -0.070              | 1.373             | 1.039               | true          | false           |
+| LTFM     | -0.405            | -0.066              | 1.280             | 0.938               | true          | false           |
+
+rw60_mean:
+shape: (10, 7)
+| ADEP_mvt | shift_sd_rank2026 | shift_sd_JanJul2025 | sd_ratio_rank2026 | sd_ratio_JanJul2025 | flag_rank2026 | flag_JanJul2025 |
+| ---      | ---               | ---                 | ---               | ---                 | ---           | ---             |
+| str      | f64               | f64                 | f64               | f64                 | bool          | bool            |
+|----------|-------------------|---------------------|-------------------|---------------------|---------------|-----------------|
+| EDDF     | -0.066            | -0.092              | 1.651             | 1.035               | false         | false           |
+| EDDM     | -0.370            | -0.105              | 1.512             | 1.164               | true          | false           |
+| EGLL     | -0.042            | -0.263              | 0.993             | 1.217               | false         | true            |
+| EHAM     | 0.259             | 0.088               | 1.374             | 1.073               | true          | false           |
+| LEBL     | -0.067            | -0.045              | 1.234             | 1.026               | false         | false           |
+| LEMD     | -0.160            | -0.182              | 1.150             | 1.169               | false         | false           |
+| LFPG     | 0.548             | -0.406              | 1.009             | 1.241               | true          | true            |
+| LIRF     | -0.081            | -0.173              | 1.231             | 1.270               | false         | false           |
+| LSZH     | -0.463            | -0.056              | 1.365             | 1.087               | true          | false           |
+| LTFM     | -0.343            | -0.054              | 1.278             | 0.972               | true          | false           |
+
+arr60_mean:
+shape: (10, 7)
+| ADEP_mvt | shift_sd_rank2026 | shift_sd_JanJul2025 | sd_ratio_rank2026 | sd_ratio_JanJul2025 | flag_rank2026 | flag_JanJul2025 |
+| ---      | ---               | ---                 | ---               | ---                 | ---           | ---             |
+| str      | f64               | f64                 | f64               | f64                 | bool          | bool            |
+|----------|-------------------|---------------------|-------------------|---------------------|---------------|-----------------|
+| EDDF     | -0.386            | -0.047              | 1.101             | 1.191               | true          | false           |
+| EDDM     | 0.087             | 0.020               | 1.108             | 1.085               | false         | false           |
+| EGLL     | 0.103             | 0.323               | 0.961             | 1.150               | false         | true            |
+| EHAM     | 0.726             | 0.121               | 2.664             | 1.145               | true          | false           |
+| LEBL     | -0.046            | 0.134               | 0.917             | 1.081               | false         | false           |
+| LEMD     | -0.406            | -0.135              | 0.838             | 0.907               | true          | false           |
+| LFPG     | -0.043            | 0.043               | 1.323             | 1.109               | false         | false           |
+| LIRF     | -0.018            | -0.044              | 1.152             | 0.964               | false         | false           |
+| LSZH     | 0.280             | -0.052              | 1.376             | 1.280               | true          | false           |
+| LTFM     | 0.123             | 0.170               | 0.874             | 1.063               | false         | false           |
+
+==============================================================================
+VERDICT (pass: same sign in >= 9/10 months, pooled trimmed transfer gain >= 1 s, no airport drifting > 0.25 sd vs ranking)
+==============================================================================
+  nb30_mean    sign 10/10 ok | pooled trim -0.10 s (full -0.10) FAIL | drift FAIL LFPG,LTFM,EHAM,EDDM,LSZH  -> fail
+  nb30_median  sign 10/10 ok | pooled trim -0.11 s (full -0.10) FAIL | drift n/a  -> fail
+  nb60_mean    sign 9/10 ok | pooled trim -0.02 s (full -0.03) FAIL | drift FAIL LSZH,LTFM,EDDM,EHAM,LFPG  -> fail
+  nb60_median  sign 9/10 ok | pooled trim -0.01 s (full -0.01) FAIL | drift FAIL EDDM,EHAM,LTFM,LFPG,LSZH  -> fail
+  rw30_mean    sign 10/10 ok | pooled trim -0.18 s (full -0.17) FAIL | drift n/a  -> fail
+  rw60_mean    sign 10/10 ok | pooled trim -0.07 s (full -0.07) FAIL | drift FAIL EHAM,LSZH,EDDM,LFPG,LTFM  -> fail
+  arr30_mean   sign 10/10 ok | pooled trim -0.01 s (full -0.01) FAIL | drift n/a  -> fail
+  arr60_mean   sign 10/10 ok | pooled trim -0.02 s (full -0.02) FAIL | drift FAIL LEMD,EHAM,LSZH,EDDF  -> fail
+run finished 2026-09-29 12:11:15
