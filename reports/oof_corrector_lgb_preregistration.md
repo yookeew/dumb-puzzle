@@ -110,4 +110,55 @@ stays.
 
 ## Amendments
 
-(none)
+### 2026-09-29 — round cap, CatBoost corrector refit, Arm B (before results)
+
+Written while the LightGBM OOF folds were still running. No corrector had
+been fit on them and no holdout number existed. Supersedes the sections
+above where they conflict.
+
+**1. Round cap 20,000 (was 5,000).** v2 hit its 5,000 cap, so the cap is
+raised here instead of in a later separate test. The learning rate stays
+0.05, so only one thing changes. Everything else is unchanged: early
+stopping on June (a training month, never Jan/Jul 2025) with patience 100,
+the 10-month refit at `round(1.1 × best_iter)`, and the 12-month ranking
+refit at that same fixed count (no early stopping on any scored month).
+- The cap applies to every corrector below. Each reports its best_iter.
+  If one still hits 20,000, that is reported, not re-run.
+
+**2. The CatBoost corrector is refit at the same cap (`catcorr20`).** Same
+v2 design and inputs, fit on `cache/oof/cat_mixed/`. As in v21, the rerun
+CatBoost is used throughout (`cat_mixed_rerun_holdout_ev.parquet`,
+`cat_mixed_rank.parquet`).
+
+**3. Arm A (primary):** NNLS(`lgbcorr20`, `catcorr20`), cross-fit. It is
+compared with the v21 control NNLS(`lgb`, `catcorr`) under the gate rule
+above. Diagnostics (not decisive) separate the parts:
+- NNLS(`lgbcorr20`, `catcorr`) vs control: the LightGBM corrector alone;
+- NNLS(`lgb`, `catcorr20`) vs control: the cap alone, on CatBoost.
+
+**4. Arm B (secondary): one joint corrector on both engines.**
+- Base: `base_B = w_l · lgb + w_c · cat`, with NNLS weights (no
+  intercept) fit on the **training-month OOF predictions** of both
+  engines. Holdout rows use the same weights on the engines' holdout
+  predictions. No holdout data enters the weights.
+- Target: `taxi − base_B`. Inputs: base features, both engines' `pred`
+  and `echo_prob`, `nmu_op_echo_rate`, `nmu_op_n`.
+- Rows: training rows with `taxi >= 0` and `base_B <= 7,200 s`. Applied
+  where `base_B <= 7,200 s`, and elsewhere `base_B` is kept unchanged.
+- Model, loss, early stopping and cap as in item 1. Output
+  `max(0, base_B + r_hat)`. It is used as the final model prediction,
+  with no further stack.
+
+**5. Decision (two arms on a partly spent holdout, so a fixed order):**
+- **A passes the gate vs control** → A is the candidate.
+- **B replaces A** only if B passes the gate vs control **and** passes the
+  same rule (pooled trimmed delta < 0 with P(worse) < 0.05, both months
+  trimmed < 0, full guard P(worse) < 0.9) **vs A**.
+- **If A fails,** B can be the candidate only if it passes vs control.
+- **If neither passes,** v21 stays.
+- One candidate goes to the leaderboard as v22, built as described above
+  (ADS-B stages refit on top). Keep it iff its score < 270.2.
+
+**Inputs this needs on top of the original list:** `cache/oof/cat_mixed/`
+(10 folds), `cache/eval/cat_mixed_rerun_holdout_ev.parquet` and
+`cache/eval/cat_mixed_rank.parquet`, all from the v21 build.
