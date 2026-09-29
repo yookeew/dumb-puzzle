@@ -3756,3 +3756,80 @@ section D on Colab to confirm.
    rows, that's ~150 ranking rows. Not worth it.
 2. LSZH B/D/G/C/T coordinates, if section D confirms they are displaced.
    Upper bound ~2,500 ranking rows moved into appear/dwell.
+
+### Step 2 -- cancelled (no naming bug; see Step 1)
+
+### Part A -- are the ADS-B stage parameters under-fitted for 2026? Mostly no.
+`tests/step51_partA_adsb_param_sizing.py`, `logs/step51_partA_adsb_param_sizing.log`.
+
+**Method.** The v21 ADS-B fit is rebuilt exactly as `stack_submit.py
+--cat-corrected` does it. The stack weights (0.4589 / 0.5551) and the lags
+(EGLL -169, LEMD -136, ...) reproduce the v21 log exactly. Every parameter is
+then refit on 300 (airport, day) cluster resamples of the holdout (479
+clusters, stack weights held fixed). The only holdout-label use is refitting
+the already-shipped parameters.
+
+**Flagged cells** (fit < 500 and applied > 5,000, or large SE):
+
+| parameter | estimate | bootstrap SE | fit rows (Jan/Jul 2025) | ranking 2026 rows applied |
+|---|---|---|---|---|
+| lag LEMD | -136 s | **44 s** | 114 | 6,593 |
+| partial intercept LEMD | 359 s | **22 s** | 121 | 8,665 |
+| partial intercept pooled (LFPG) | 356 s | 55 s | 68 | 220 |
+
+- **LEMD: confirmed.** Two parameters are fitted on ~120 rows and applied to
+  6.6k-8.7k rows, with SEs of 44 s and 22 s.
+- **EGLL: refuted on noise.** Its fit/apply ratio is high (lag 1,044 -> 19,547,
+  cells ~520 -> 9-10k, partial 1,042 -> 8,471). But the SEs are small: lag
+  5.8 s, cell weights +-0.03-0.06, intercept 12 s. EGLL's surface tracks are
+  consistent enough that 500-1,000 rows pin the parameters down.
+- Everything else has relative SE <= 0.18 (weights, q factors, slope b) and
+  SE <= 6 s (lags, intercepts).
+- **What the bootstrap can't see:** a 2025 -> 2026 shift (receiver network,
+  §40's EGLL drift question). More 2025 data would narrow sampling noise, not
+  that shift.
+
+**What the noise costs the submission (label-free).** SD of the final 2026
+prediction across the bootstrap draws, on the rows the stages touch: LEMD
+19.6 s RMS (p90 35 s), EHAM 18.2, EGLL 10.6, the others 6-9 s. Over the whole
+ranking set that's sqrt(sum sd^2 / N) = **8.3 s**. Added in quadrature to a
+~270 s RMSE, that's **+0.13 s**. So fitting the current stages on unlimited
+data could win at most ~0.1 s from noise reduction, of which LEMD is ~0.03 s.
+
+**Pull sizing (Sep-Dec 2025, 122 days).**
+- **Colab time.** §37 measured ~5 min/day for January and 10-12 min/day for
+  July. Sep-Oct at summer rates and Nov-Dec at winter rates gives about
+  61x11 + 61x6 min = **~17 h full**, or **~8.5 h every second day**. The full
+  pull needs two free-tier sessions; the fetcher is resumable.
+- **Extra rows,** at the 09-15 / 11-15 recovery rates. These are optimistic:
+  Jan/Jul 2025 rates were lower at EDDF and EGLL.
+
+| airport | appear/dwell now | + full | + every-2nd-day | partial now | + full | + every-2nd-day |
+|---|---|---|---|---|---|---|
+| LEMD | 114 | ~15,100 | ~7,500 | 121 | ~22,300 | ~11,100 |
+| EGLL | 1,044 | ~6,100 | ~3,000 | 1,042 | ~12,100 | ~6,100 |
+
+  Other airports gain 9k-61k appear/dwell rows on top of 4k-27k already fitted.
+
+**A.4 design sketch (proposal only).** Fit the ADS-B stages on training-month
+ADS-B days, with the OOF CatBoost as the base.
+- **Base mismatch.** The shipped stages sit on the lgb+catcorr stack, whose
+  error is smaller than a single OOF CatBoost's. The least-squares weights
+  depend on the base's error, so weights fitted on the OOF base would over-trust
+  ADS-B.
+- **What doesn't depend on the base:** the lags (median of adsb_taxi - taxi)
+  and the partial slope/intercepts (fitted on taxi - L).
+- **Proposed hybrid:** lags and partial intercepts from Sep-Dec 2025. Blend
+  weights, q factors and band weights stay on the holdout stack, cross-fit
+  Jan<->Jul as now.
+- **Gate:** the §39/§43 holdout harness, comparing the hybrid against the
+  current cross-fit. Pre-registered rule: pooled trimmed delta < 0 with
+  P(worse) < 0.05, both months < 0, full-RMSE guard P(worse) < 0.9 (§47). LEMD
+  would be reported separately, since it's the only cell the pull is for.
+
+**Recommendation: the pull is not worth it for parameter fitting.** The
+measurable ceiling is ~0.1 s. The one weak cell (LEMD) is worth ~0.03 s of
+it. A pull would only pay if it enables a new stage that can't be fitted
+without training-month ADS-B data (e.g. Part B's "parked anywhere" tier
+needing more than two days to pass its bar). It shouldn't be justified by
+tightening the current parameters.
