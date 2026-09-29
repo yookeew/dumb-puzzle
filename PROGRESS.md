@@ -3686,3 +3686,73 @@ CatBoost; LTFM has no ADS-B stage, EGLL's touches ~1%).
 - **Recommendation:** no pre-registration from these screens. Time goes to the
   freeze deliverables (§45 item 4 / §46 plan item 4: REPRODUCE.md, the
   DATA_SOURCES check, the public GPLv3 repo, the JOAS draft).
+
+## 51. ADS-B stand resolution, 2025 vs 2026 (2026-09-29)
+
+### Step 1 -- stand-resolution audit (label-free): NO naming/normaliser bug
+`tests/step51_stand_audit.py`, `logs/step51_stand_audit.log`. No labels read.
+Section D of the script (the stationary prefix of the Screen-1 population vs
+the nearest Gateway stand) needs the raw ADS-B points. They are not on the
+local machine (`data/external/adsb/` is absent; only the detector output
+`cache/adsb_pushback/` is local), so section D printed SKIPPED. It runs as-is
+on Colab.
+
+**Resolution is flat from 2025 to 2026.** Share of DEP rows whose STAND_mvt
+resolves to Gateway coordinates:
+
+| | 2025-01 | 2025-07 | 2026-01 | 2026-07 |
+|---|---|---|---|---|
+| EDDF | 92.6 | 93.1 | 92.5 | **83.5** |
+| LSZH | 85.7 | 85.0 | 84.3 | 86.4 |
+| LEMD | 96.9 | 96.3 | 96.2 | 96.2 |
+| others | 92-100, change <= 1.4 pt | | | |
+
+The only real change is EDDF in July 2026. It comes from new unresolved strings
+J1-J10, H5 and H9 (~1,900 rows): Terminal 3 stands that aren't in the 2024
+Gateway scenery. This is a coverage gap in the stand data, not a normaliser
+bug. Every other top-20 unresolved list is the same set in both years: EDDF
+V7xx/V32x/B41/B20, EGLL 323/325/237, EHAM A81-85/HG, LFPG U/E/F34, LSZH
+I01-05/GA6/F70-71, LEMD T20, LEBL "UNKNOWN".
+
+**The EDDF recovery drop follows ADS-B reception, not resolution.** EDDF
+recovery (appear/dwell share of DEP) by month:
+
+| month | resolved % | matched % | recovery % (min-max by day) | median points/run | median first sighting to own stand |
+|---|---|---|---|---|---|
+| 2025-01 | 92.6 | 68 | 10.3 (6-19) | 25 | 782 m |
+| 2025-07 | 93.1 | 73 | 13.9 (9-20) | 31 | 706 m |
+| 2025-09 (1 day) | 93.3 | 84 | 36.3 | 48 | 149 m |
+| 2025-11 (1 day) | 93.9 | 90 | 47.6 | 60 | 90 m |
+| 2026-01 | **92.5** | 50 | **5.6** (0.2-20) | 15 | 1,084 m |
+| 2026-07 | 83.5 | 63 | 3.3 (2-7) | 8 | 2,170 m |
+
+- In January 2026, resolution is unchanged but recovery falls. Tracks are
+  shorter, and they are first seen ~1-2 km from a correctly resolved stand.
+- The drop hits every stand family together (A 19.6 -> 10.1%, V 15.9 -> 6.3,
+  B 21.2 -> 1.7, C 22.3 -> 13.8, F 37.6 -> 13.4). A renamed apron would hit
+  one family; a reception change hits all of them.
+- §37's "36-48%" were the two Sep/Nov 2025 days. The comparable Jan/Jul 2025
+  figure is 10-14%, so EDDF was always weak in Jan/Jul.
+
+**The premise holds only for EDDF.** Recovery on 2026 days vs Jan/Jul 2025:
+LEMD 0.3 -> 17.8%, LSZH 19.7 -> 27.6%, EGLL 2.6 -> 49.1%, EHAM 66 -> 74%,
+LEBL 30 -> 41%, EDDM 48 -> 76%. EDDF is the only airport that fell (12.4 -> 4.2%).
+
+**A separate, year-independent anomaly: LSZH (plus EDDF E/K).** At LSZH, stand
+families B, D, G, C and T resolve (e.g. `Gate B33` -> `B33`,
+`Stand D01` -> `D1`; the normaliser handles them correctly), yet matched tracks
+never get close. Median closest approach is 418 m for B (q10 317 m), ~1.0 km
+for D, C and T, and 1.5 km for G. Their appear/dwell rate is ~0% in 2025 and
+2026 alike, against 50-85% for A, E, F, H and P at the same airport. So either
+the Gateway coordinates for those families are wrong, or the airport's
+numbering differs from the scenery's. Either way it's data, not the key
+function. EDDF E (1%) and K (5-9%) look similar. This affects ~5,100 matched
+LSZH ranking rows (B 2,500, D 1,613, G 724, C 161, T 125). If they recovered
+at LSZH's A/E rate, that's roughly an upper bound of ~2,500 rows. It needs
+section D on Colab to confirm.
+
+**Proposed normaliser change: none.** Two possible data fixes, neither applied:
+1. EDDF Terminal 3 (J/H) coordinates. At 2026 EDDF's 8% recovery on resolved
+   rows, that's ~150 ranking rows. Not worth it.
+2. LSZH B/D/G/C/T coordinates, if section D confirms they are displaced.
+   Upper bound ~2,500 ranking rows moved into appear/dwell.
