@@ -74,4 +74,33 @@ changes.
 
 ## Amendments
 
-(none)
+**2026-10-02, before any extra-month day reached the local repo and before
+any gate run:**
+- **The training months are fixed to Sep–Dec 2025:** days 1–10 of each,
+  as many as the pull delivers, plus 2025-09-15 and 2025-11-15.
+- **The gate runs once, on those months only.**
+- **Reasons:** time (the Feb–Aug pull would finish days later), and those
+  months' receiver coverage is closest to 2026.
+- **Months that arrive later are not added to this test.** Using them
+  would need a new pre-registration.
+- `tests/adsb_combiner_12m_test.py` and `src/post/adsb_combiner.py --m12`
+  are restricted accordingly (`MONTHS` in the test).
+
+**2026-10-02, second amendment, again before any extra-month day reached
+the local repo:**
+- **The days are changed from 1–10 to days 01, 02, 03, 04, 07, 10, 13, 16,
+  19, 22, 25 and 28 of each of Sep–Dec** (as many as the pull delivers).
+- **Reason:** ADS-B coverage, weather and traffic swing from day to day.
+  Consecutive days 1–10 are a correlated sample. Spreading the same budget
+  over the month is more representative. Days 01–03 were already fetched,
+  so they're kept.
+- Everything else in the first amendment stands: Sep–Dec only, one gate
+  run.
+
+**2026-10-02, third amendment, before any extra-month day reached the
+local repo:**
+- 2025-09-15 and 2025-11-15 stay in the training rows, but **from a fresh
+  download** in the `adsb_restofyear` pull.
+- The two older Colab extracts of those days are corrupted.
+  `normalise_adsb.py` reads `external-data/adsb-restofyear/` last, so the
+  fresh files replace them.

@@ -31,12 +31,16 @@ import ltfm_egll_anatomy as A  # noqa: E402
 JAN, JUL = A.JAN, A.JUL
 OOF = ROOT / "cache" / "oof"
 RAW = ROOT / "data" / "raw"
+MONTHS = ("2025-09", "2025-10", "2025-11", "2025-12")   # amendment 2026-10-02: Sep-Dec only
+DAYS = {1, 2, 3, 4, 7, 10, 13, 16, 19, 22, 25, 28}      # second amendment: spread over the month
+EXTRA_DAYS = {"2025-09-15", "2025-11-15"}                # third amendment: re-downloaded fresh
 
 
 def oof_frame() -> pl.DataFrame:
     """Labelled DEP rows on non-holdout 2025 days that have v4 detections, with the OOF stack."""
     paths = [p for p in sorted(C.V4.glob("day=2025-*.parquet"))
-             if not p.name.startswith(("day=2025-01", "day=2025-07"))]
+             if p.name[4:11] in MONTHS
+             and (int(p.name[12:14]) in DAYS or p.name[4:14] in EXTRA_DAYS)]
     det = pl.concat([pl.read_parquet(p) for p in paths]).select("MVT_ID_mvt", *V.DET_COLS, "adsb_fallback")
     pr = None
     for e in ("lgb", "cat"):

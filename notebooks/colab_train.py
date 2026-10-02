@@ -100,7 +100,9 @@ run(engine="cat_ctr2", target="mixed", eta=0.05, seed=42, name="cat_ctr2_mixed",
 # %%
 # ADS-B fetch, the other 2025 months (PROGRESS.md §62): training data for the ADS-B
 # combiner beyond the Jan/Jul holdout, from months whose receiver coverage looks like 2026.
-# Days 1-10 of each month; Sep-Dec first (closest to 2026), then Feb-Jun + Aug. Own OUT
+# Days spread over each month: 01-03 (fetched first), then every third day 04..28, so
+# the sample covers the month's weather/traffic/coverage swings. Sep-Dec first (closest to
+# 2026), then Feb-Jun + Aug. Own OUT
 # folder (adsb_restofyear), separate from the Jan/Jul pull; fetch_adsb.py skips days
 # already in it, so after a disconnect just re-run this cell. Runs MAX_PAR jobs at a time
 # (one month per job). Copy back: the whole adsb_restofyear folder ->
@@ -116,7 +118,9 @@ assert pathlib.Path(f'{R}/src/ingest/fetch_adsb.py').exists(), f'fetch_adsb.py n
 pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
 months = ['2025-09', '2025-10', '2025-11', '2025-12',            # priority: closest to 2026
           '2025-08', '2025-06', '2025-05', '2025-04', '2025-03', '2025-02']
-queue = [(m, f'{m}-01:{m}-10') for m in months]
+DAYS = [1, 2, 3, 4, 7, 10, 13, 16, 19, 22, 25, 28]
+EXTRA = {'2025-09': ['2025-09-15'], '2025-11': ['2025-11-15']}   # re-fetch: old extracts corrupted
+queue = [(m, ' '.join([f'{m}-{d:02d}' for d in DAYS] + EXTRA.get(m, []))) for m in months]
 running = {}
 while queue or running:
     while queue and len(running) < MAX_PAR:
