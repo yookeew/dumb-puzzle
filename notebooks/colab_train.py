@@ -68,5 +68,16 @@ run(engine="cat", target="mixed", eta=0.05, name="cat_mixed_rerun", submit=True,
     rank_out="cache/eval/cat_mixed_rank.parquet")
 
 # %%
+# Stage-1 screen: CatBoost with categorical pairs (reports/cat_ctr2_preregistration.md).
+# T4 runtime. Holdout fits only (submit=False, no refit): 2 regressors + echo classifier.
+# The log prints cumulative seconds per fit ("holdout fit ...s") -- note them: if the
+# mean fit time exceeds 25 min, stage 2 (30 OOF fits) is not feasible and we stop.
+# Copy back: cache/eval/cat_ctr2_mixed_holdout_ev.parquet (+ the cell output as a log).
+import os; os.environ["PRC_MEMLOG"] = "1"
+from models.fit import run
+run(engine="cat_ctr2", target="mixed", eta=0.05, seed=42, name="cat_ctr2_mixed", submit=False,
+    ev_out="cache/eval/cat_ctr2_mixed_holdout_ev.parquet")
+
+# %%
 # Submissions land in data/submissions/<name>.parquet — download and upload to
 # the challenge portal as <team>_v<n>.parquet.

@@ -3598,3 +3598,34 @@ already taxiing.**
 - arnavhm13 reports holdout full RMSE Jan 357 / Jul 333, and Jan ~218 with
   rows > 1 h removed. Their trim is 1 h, ours 5 h, so the trimmed numbers
   aren't comparable.
+
+## 51. LightGBM corrector, 20k cap and joint corrector (Arm B) -- all REJECTED (2026-09-29)
+
+Pre-registered in `reports/oof_corrector_lgb_preregistration.md`
+(`5f84a60`, amendment `64765e4`, both before results). Full results are
+there; log `logs/oof_corrector_lgb_test.log`.
+
+**All three gates fail on July, so v21 (270.2) stays.**
+- Arm A, NNLS(lgbcorr20, catcorr20) vs v21's NNLS(lgb, catcorr): pooled
+  trimmed -0.56 (P(worse) 0.228), Jan -2.16, Jul +0.44.
+- Arm B, one joint corrector on both engines' OOF: pooled trimmed -1.60
+  (P 0.000), full -1.26 (P 0.014). It fails only because Jul is +0.44
+  (Jan -4.90). It also beats A (pooled -1.04, P 0.005) but ties it in July.
+- Per the pre-registration, no rescue variants.
+
+**What we learned:**
+- **Correcting LightGBM on its own works (-5.25 trimmed), but the stack
+  had already captured almost all of it (-0.58).** Stacking two models and
+  correcting them overlap: once CatBoost is corrected and stacked, there's
+  little left for the LightGBM corrector to add.
+- **The corrector's round cap is closed.** At 20k, CatBoost's corrector
+  stops at 5,378 (vs the 5,000 cap), and the gain is -0.03.
+- **Arm B's gain is all January.** July is flat in every comparison. Like
+  §47/§48, gains that show in only one month have not carried over to the
+  board reliably. One more holdout month would settle it, but we don't
+  have one to spare.
+
+**Artefacts kept** (cache, not committed):
+- `cache/oof/lgb_mixed/`: 10 LightGBM OOF folds, ~30-50 min each locally.
+- `cache/oof/corrector20_*`: the fitted correctors.
+- `cache/eval/{lgbcorr20,catcorr20,joint20}_mixed_holdout_ev.parquet`.

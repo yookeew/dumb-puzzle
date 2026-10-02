@@ -162,3 +162,43 @@ above. Diagnostics (not decisive) separate the parts:
 **Inputs this needs on top of the original list:** `cache/oof/cat_mixed/`
 (10 folds), `cache/eval/cat_mixed_rerun_holdout_ev.parquet` and
 `cache/eval/cat_mixed_rank.parquet`, all from the v21 build.
+
+## Results (2026-09-29) — all arms FAIL; v21 stays
+
+Log: `logs/oof_corrector_lgb_test.log`. Run after the amendment was
+committed (`64765e4`).
+
+**Correctors (20k cap).** None reached the cap:
+- lgbcorr20: best_iter 4,585
+- catcorr20: best_iter 5,378
+- joint20: best_iter 516
+
+Arm B's base weights (NNLS on OOF): lgb 0.462 / cat 0.544. Each corrector
+was applied to 99.97% of holdout rows.
+
+**Gates (trimmed decides; the full guard is P(worse) < 0.9):**
+
+| comparison | Jul trimmed | Jan trimmed | pooled trimmed (P worse) | pooled full (P worse) | result |
+|---|---|---|---|---|---|
+| A vs control | +0.44 | -2.16 | -0.56 (0.228) | -0.99 (0.053) | FAIL: pooled not significant, Jul > 0 |
+| B vs control | +0.44 | -4.90 | -1.60 (0.000) | -1.26 (0.014) | FAIL: Jul > 0 |
+| B vs A | +0.00 | -2.74 | -1.04 (0.005) | -0.27 (0.290) | FAIL: Jul not < 0 |
+
+Decision per item 5: **no candidate; v21 stays.** Per the pre-registration,
+no rescue variants.
+
+**Diagnostics (not decisive):**
+- **The LightGBM corrector works alone but not in the stack.** lgbcorr20 vs
+  lgb is -5.25 trimmed (P 0.000). Inside the stack it's only -0.58
+  (P 0.230). NNLS(lgb, catcorr) already captures most of what the
+  corrector adds.
+- **The cap doesn't matter.** catcorr20 vs catcorr is -0.03; the stack
+  with catcorr20 is -0.04. So the "hit the 5,000 cap" question is closed:
+  the extra rounds add nothing.
+- **All of Arm B's gain is in January.** July is flat in every
+  comparison. Arm B improves deciles 1-8 by 4-14 s and loses 7.2 s on the
+  top decile. By airport, 8/10 improve (EDDF, EGLL, LEMD and LFPG by
+  2-3 s); EDDM is +0.15.
+- **The control's stack weights swing between cross-fit directions**
+  (lgb 0.515 fit on Jan vs 0.368 fit on Jul), so the stack itself is noisy
+  at this level.
