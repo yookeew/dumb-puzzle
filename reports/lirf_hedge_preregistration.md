@@ -75,3 +75,36 @@ to the board before (v20), so the board is the final arbiter.
 ## Amendments
 
 (none)
+
+## Results (2026-10-02, `tests/lirf_hedge_test.py`, log `logs/lirf_hedge_test.log`; run after commit 684eb91)
+
+**Primary: ADOPT.** Base = v21 cross-fit, full RMSE 327.52. Population
+4,124 holdout rows.
+
+| | base | new | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 310.95 | 309.92 | −1.03 | [−1.94, −0.21] | 0.006 |
+| B: Jan (fit Jul) | 346.98 | 346.51 | −0.47 | [−1.32, +0.05] | 0.045 |
+| pooled | 327.52 | 326.75 | −0.77 | [−1.39, −0.27] | 0.002 |
+| guard: pooled trimmed | 263.30 | 262.32 | −0.99 | [−1.68, −0.36] | 0.001 |
+
+- **The gain comes from the NM-unmatched cells.** Their shift is negative
+  and similar in both directions: 1–3 h −637 (fit Jan) / −625 (fit Jul).
+  1–3 h NM-unmatched RMSE 2,377 → 2,232.
+- **The NM-matched shifts flip sign** between months (1–3 h: −29 fit on
+  Jan, +108 fit on Jul) and make their cells slightly worse (768 → 774,
+  920 → 926). Per the rule, all four cells are kept. If v22 disappoints,
+  this is the first suspect, but no rescue variant is allowed.
+- **Variant with a 6 h+ band** (not decisive): pooled −1.50, both months
+  better. Its 6 h+ NM-unmatched cell has only 5 (Jan) and 16 (Jul) fit
+  rows. Not used, as pre-registered.
+
+**v22 build** (`src/post/lirf_hedge.py`, log `logs/lirf_hedge_build.log`).
+- Shifts fitted on Jan+Jul cross-fit v21 predictions: 1–3 h matched +84,
+  unmatched −720; 3–6 h matched +100, unmatched −425.
+- Applied to the uploaded `smart-jigsaw_v21.parquet`: 4,142 ranking rows
+  change, RMS diff vs v21 22.7 s.
+- Board A/B pending: keep iff < 270.2.
+
+**Board: v22 = 270.86 (v21 270.2, +0.66). REJECTED; v21 stays.** Per the
+rule, no rescue variant (e.g. NM-unmatched cells only).

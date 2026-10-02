@@ -3732,3 +3732,81 @@ adopted (§24-§27). Nothing here to pre-register.
   3-6 h NM-unmatched: echo rate 0.50, prediction median 8,841 s vs offset
   13,380 s. This motivates `reports/lirf_hedge_preregistration.md`, which is
   decided on full RMSE with a board A/B as the final arbiter.
+
+## 55. LIRF long-delay hedge recalibration -- holdout gate PASS; v22 built, board pending (2026-10-02)
+
+Pre-registered in `reports/lirf_hedge_preregistration.md` (684eb91, before
+results); full results there.
+
+- **Change:** for LIRF departures 1-6 h late, a shrunk mean-residual shift
+  per (delay band {1-3 h, 3-6 h} x NM-unmatched), applied on top of v21.
+- **Gate (full RMSE decides):** pooled -0.77 (P(worse) 0.002); Jul -1.03,
+  Jan -0.47; trimmed guard -0.99. ADOPT.
+- **Mechanism:** the gain is in the NM-unmatched cells. v21 over-hedges
+  toward the schedule echo there, and the shift is stable at about -630 s
+  (1-3 h) in both directions. The NM-matched cells flip sign between
+  months and are slightly worse. Kept per the rule; noted as the first
+  suspect if the board disagrees.
+- **v22** = `data/submissions/smart-jigsaw_v22.parquet`: v21 plus the
+  shifts (fitted on Jan+Jul), 4,142 ranking rows changed, RMS 22.7 s from
+  v21. Keep iff the board < 270.2.
+- The variant that adds a 6 h+ band scored better on the holdout (-1.50)
+  but rests on 5-16 fit rows per cell and is the v20 failure zone. Not used.
+
+**Board (2026-10-02): v22 = 270.86, +0.66 vs v21. REJECTED; v21 (270.2)
+stays.** `src/post/lirf_hedge.py` is kept for the record but isn't part of
+the submission path.
+
+**Lesson (third time):** a LIRF delay-band rule learned on 2025 passed a
+cross-fit holdout gate and lost on the board. The others were v20 (+24 h)
+and §42 (echo mixture). GREKI's "for NM-unmatched rows nothing beat a
+calibrated hedge; rules learned on 2025 rarely carried over" holds for
+us. Jan<->Jul cross-fit doesn't protect against 2025 -> 2026 drift in LIRF's
+label recording. **Don't spend more submissions on LIRF hedge rules.**
+
+| version | what | score |
+|---|---|---|
+| **v21** | OOF-corrected CatBoost stack + ADS-B | **270.2** (best) |
+| v22 | v21 + LIRF long-delay hedge shift | 270.86 (rejected) |
+
+## 56. More ADS-B pushbacks: inferred stands + fallback match (v3 detector) -- scoped, pre-registered, gate pending (2026-10-02)
+
+**Brainstorm screens, both null** (non-holdout days 2025-09-15/11-15, honest OOF base):
+- Neighbour ADS-B residual (mean ADS-B-minus-base of observed departures at
+  the same airport within ±15/30/60 min, applied to the others): ~±1 s,
+  sign differs by day.
+- Arrival taxi-in excess near T (arrival taxi-in was never a feature):
+  corr with the residual 0.00 at every window.
+
+**Where ADS-B is lost (2026 ranking).** Every day has coverage at EDDF,
+EGLL, LEMD, LSZH, yet 42% / 22% / 32% / 15% of their departures match no
+track (LFPG 90%, but its tracks are too sparse to reach stands).
+- The match needs the takeoff roll in the track. On 2026-01-15 and
+  07-15, among unmatched departures with stand coords, an aircraft sat
+  at the own stand in [T-90 m, T-2 m] and was later seen moving for:
+  EGLL 30/41%, LSZH 23-26%, LEMD ~10%, EDDF 3-9%, LFPG 0%.
+- 9,455 ranking rows have a matched track but no stand coordinates.
+- Holdout: observed-pushback rows score RMSE 90-140, against 240-320 for
+  the rest at the same airports.
+
+**Built (split-blind):**
+- `src/ingest/stand_infer.py` -> `data/external/stands_inferred.csv`
+  (ODbL row added to DATA_SOURCES.md): 50 stands. Validated on 848 Gateway
+  stands: median 7 m off, 97% within 100 m (LFPG fails, excluded).
+- `src/link/adsb_pushback.py --v3` -> `cache/adsb_pushback_v3/`: the
+  inferred stands plus a fallback match for unmatched departures (tiers
+  `fb_dwell` / `fb_appear`). Production output is unchanged. Existing
+  detections change on 34 of 159,138 rows. Adds 4,773 appear/dwell via
+  inferred stands and 29,430 fallback rows (2025 + 2026).
+
+**Scoping (`tests/adsb_v3_scope.py`):**
+- Inferred-stand rows: ADS-B RMSE 153 vs base 157, LS w 0.52 (-> 133).
+- Fallback: median error ~0 but RMSE ~1,200 (wrong events). Wrong events
+  have implied taxi > 30 min or far from the base prediction.
+- Gated on |ADS-B - lag - base| <= 300 s: 65-69% within ±120 s, base
+  142 -> 123 at w ~0.5. All rows -0.25 s. On 4 sample 2026 days: fallback
+  3.7% of rows, gated 1.5%, inferred-stand 0.7%.
+- Expected: ~0.5-1 board point.
+
+Gate pre-registered in `reports/adsb_v3_preregistration.md` (trimmed
+RMSE decides); script `tests/adsb_v3_test.py`.
