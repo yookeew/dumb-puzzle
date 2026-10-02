@@ -1,0 +1,44 @@
+rows 11253 base rmse 234.22994077383663
+far rows 1577   of which gs>=5: 1270
+shape: (8, 8)
+| ADEP_mvt | len | unseen_p10 | unseen_p50 | unseen_p90 | viol | base_below_L | taxi_sd |
+| ---      | --- | ---        | ---        | ---        | ---  | ---          | ---     |
+| str      | u32 | f64        | f64        | f64        | f64  | f64          | f64     |
+|----------|-----|------------|------------|------------|------|--------------|---------|
+| EDDF     | 255 | -96.2      | 499.9      | 1034.8     | 0.1  | 0.1          | 304.2   |
+| EDDM     | 46  | -111.0     | 548.2      | 871.6      | 0.2  | 0.2          | 215.2   |
+| EGLL     | 253 | 629.8      | 1014.0     | 1502.9     | 0.0  | 0.0          | 384.8   |
+| EHAM     | 125 | -503.0     | 540.2      | 927.3      | 0.2  | 0.2          | 318.5   |
+| LEBL     | 174 | 68.5       | 542.7      | 1004.2     | 0.1  | 0.1          | 281.2   |
+| LEMD     | 456 | 196.1      | 599.9      | 948.2      | 0.0  | 0.0          | 279.0   |
+| LFPG     | 192 | 424.6      | 794.5      | 1259.8     | 0.0  | 0.0          | 336.7   |
+| LSZH     | 76  | 138.1      | 316.9      | 735.2      | 0.0  | 0.1          | 286.6   |
+shape: (6, 6)
+| dbin  | len | unseen_p10 | unseen_p50 | unseen_p90 | viol |
+| ---   | --- | ---        | ---        | ---        | ---  |
+| enum  | u32 | f64        | f64        | f64        | f64  |
+|-------|-----|------------|------------|------------|------|
+| 1-1.5 | 543 | 73.6       | 533.8      | 879.2      | 0.1  |
+| 1.5-2 | 343 | 146.1      | 612.8      | 1112.8     | 0.1  |
+| 2-3   | 326 | 220.3      | 734.9      | 1212.4     | 0.0  |
+| 3-4   | 156 | 108.4      | 882.3      | 1496.6     | 0.1  |
+| 4-6   | 36  | -65.4      | 509.4      | 1440.2     | 0.2  |
+| 6+    | 173 | 257.5      | 777.0      | 1309.8     | 0.1  |
+far all: n=1577 b=15s/km w=0.036  base=187.2 est=499.2 blend=186.4  clipL=347.8  SSE share of all rows=0.090  corr(r,dl)=0.093
+far moving: n=1270 b=21s/km w=0.048  base=175.0 est=443.5 blend=173.8  clipL=307.6  SSE share of all rows=0.063  corr(r,dl)=0.117
+far noEHAM: n=1452 b=14s/km w=0.046  base=186.0 est=469.7 blend=184.8  clipL=322.0  SSE share of all rows=0.081  corr(r,dl)=0.112
+  EDDF: n=255 b=37s/km w=0.050  base=151.4 est=530.1 blend=149.0  clipL=360.4  SSE share of all rows=0.009  corr(r,dl)=0.176
+  EGLL: n=253 b=-49s/km w=0.029  base=253.0 est=523.6 blend=252.7  clipL=336.9  SSE share of all rows=0.026  corr(r,dl)=0.046
+  EHAM: n=125 b=173s/km w=0.008  base=200.6 est=745.4 blend=200.5  clipL=567.4  SSE share of all rows=0.008  corr(r,dl)=0.014
+  LEBL: n=174 b=192s/km w=0.057  base=148.1 est=336.2 blend=147.0  clipL=176.3  SSE share of all rows=0.006  corr(r,dl)=0.123
+  LEMD: n=456 b=-9s/km w=0.086  base=157.0 est=323.4 blend=154.7  clipL=168.8  SSE share of all rows=0.018  corr(r,dl)=0.147
+  LFPG: n=192 b=-3s/km w=0.104  base=232.9 est=343.4 blend=231.0  clipL=232.9  SSE share of all rows=0.017  corr(r,dl)=0.125
+  LSZH: n=76 b=68s/km w=0.033  base=160.2 est=903.5 blend=157.2  clipL=852.3  SSE share of all rows=0.003  corr(r,dl)=0.185
+
+--- cross-day: can residual r be predicted from track info? ---
+fit 2025-09-15 -> 2025-11-15: n=693 base=172.9  +1.0*gbm=174.4
+fit 2025-09-15 -> 2025-11-15: n=693 base=172.9  +0.5*gbm=170.6
+   linear on Lrel: coef=[0.013 0.017]  rmse=172.3
+fit 2025-11-15 -> 2025-09-15: n=884 base=197.7  +1.0*gbm=199.7
+fit 2025-11-15 -> 2025-09-15: n=884 base=197.7  +0.5*gbm=195.9
+   linear on Lrel: coef=[8.382 0.028]  rmse=197.3

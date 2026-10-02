@@ -1,0 +1,34 @@
+ranking rows 344,841; SSE gap 7.873e+09 = one row off by 88,732 s, 10 rows by 28,060 s, 100 rows by 8,873 s; uniform = -31% MSE
+  fixing one row off by  10000 s:  0.54 points
+  fixing one row off by  20000 s:  2.16 points
+  fixing one row off by  40000 s:  8.73 points
+  fixing one row off by  80000 s: 36.86 points
+
+holdout full RMSE 327.52
+  drop top    1 rows: RMSE  295.28  (they carry 18.7% of SSE)
+  drop top    5 rows: RMSE  265.06  (they carry 34.5% of SSE)
+  drop top   10 rows: RMSE  260.10  (they carry 36.9% of SSE)
+  drop top   30 rows: RMSE  252.13  (they carry 40.7% of SSE)
+  drop top  100 rows: RMSE  238.77  (they carry 46.9% of SSE)
+  drop top 1000 rows: RMSE  204.70  (they carry 60.9% of SSE)
+
+like-for-like with arnavhm13 (Jan 357 / Jul 333; Jan ~218 with labels > 1 h removed):
+  2025-01: full 347.0   labels<=1h 204.7
+  2025-07: full 310.9   labels<=1h 249.5
+
+LIRF by delay band x NM-unmatched:
+shape: (10, 7)
+| ob    | nmu   | len   | p_echo | off_p50   | pred_p50  | sse_share |
+| ---   | ---   | ---   | ---    | ---       | ---       | ---       |
+| enum  | bool  | u32   | f64    | f64       | f64       | f64       |
+|-------|-------|-------|--------|-----------|-----------|-----------|
+| <1h   | false | 22340 | 0.648  | 1379.000  | 1082.363  | 0.051     |
+| <1h   | true  | 22    | 0.318  | 989.000   | 1329.230  | 0.009     |
+| 1-3h  | false | 3537  | 0.071  | 4801.000  | 1329.656  | 0.057     |
+| 1-3h  | true  | 292   | 0.284  | 6358.000  | 3277.659  | 0.045     |
+| 3-6h  | false | 233   | 0.004  | 13505.000 | 1210.474  | 0.005     |
+| 3-6h  | true  | 62    | 0.500  | 13380.000 | 8841.052  | 0.047     |
+| 6-12h | false | 19    | 0.000  | 25915.000 | 1490.753  | 0.000     |
+| 6-12h | true  | 10    | 1.000  | 30332.000 | 29210.374 | 0.001     |
+| 12h+  | false | 2     | 0.500  | 65909.000 | 51432.424 | 0.009     |
+| 12h+  | true  | 11    | 0.545  | 58563.000 | 55029.382 | 0.075     |

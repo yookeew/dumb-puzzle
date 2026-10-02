@@ -3629,3 +3629,106 @@ there; log `logs/oof_corrector_lgb_test.log`.
 - `cache/oof/lgb_mixed/`: 10 LightGBM OOF folds, ~30-50 min each locally.
 - `cache/oof/corrector20_*`: the fitted correctors.
 - `cache/eval/{lgbcorr20,catcorr20,joint20}_mixed_holdout_ev.parquet`.
+
+## 52. ADS-B far-sighting extension (§50 idea) -- killed at scoping, no holdout read (2026-10-02)
+
+Scoping only, on the two non-holdout 2025 ADS-B days (09-15, 11-15) with an
+honest base (mean of the month-wise OOF LightGBM and CatBoost predictions).
+No pre-registration was written because no holdout row was read. Script
+`tests/adsb_far_scope.py`, log `logs/adsb_far_scope.log`.
+
+**Population:** matched, no pushback tier, first seen >= 1 km from the own
+stand, LIRF excluded (the complement of §41). 1,577 of 11,253 rows (14%),
+9% of squared error.
+
+**Why it fails:**
+- These tracks are first seen late, typically near the runway. The unseen
+  part (`taxi - L`) has a median of 500-1,000 s, so it is most of the taxi,
+  and it doesn't grow with the first-sighting distance (fitted slope
+  ~15 s/km, against ~240 s/km under 1 km in §41).
+- §41's estimate, extended: the in-sample LS blend weight is 0.04
+  (corr(residual, est - base) = 0.09). The far rows go 187.2 -> 186.4 s,
+  which is ~0.1 s on all rows.
+- The floor `T - first_ts` is not a floor here: 10-20% of rows per airport
+  have taxi < L - 30 s. Clipping the base to it makes the far rows much
+  worse (187 -> 348 s).
+- A flexible check: a small Huber LightGBM on (L, distance, ground speed,
+  L - base, base, n_pts, min distance, airport), fit on one day and scored
+  on the other. At full weight it's worse; at half weight it gains ~2 s on
+  far rows, so ~0.2-0.3 s on all rows.
+
+**Conclusion:** expected holdout gain ~0.1-0.3 s, against §50's estimate of
+1-3 board points. Not worth a pre-registration and gate. §50's "floor is
+valid for untiered-moving rows" doesn't hold for the >= 1 km subset.
+
+## 53. LTFM and EGLL error anatomy (§45 item 2) -- no recording pattern, nothing to build (2026-10-02)
+
+No training. The v21 pipeline cross-fit on the holdout (NNLS(lgb, catcorr),
+quality-modulated ADS-B blend, partial estimate): RMSE 327.52, trimmed
+263.30. Scripts `tests/ltfm_egll_anatomy.py`, `tests/ltfm_egll_late_mix.py`;
+logs `logs/ltfm_egll_anatomy.log`, `logs/ltfm_egll_late_mix.log`.
+
+**Share of squared error:** LTFM 8.9% (trimmed 13.7%), EGLL 8.8% (13.6%).
+Both are spread out, unlike LFPG: the top-10 rows carry 7% (LTFM) and 15%
+(EGLL); LFPG's carry 79%.
+
+**LTFM (RMSE 265; Jan 227, Jul 294):**
+- The error is long taxis on a few July disruption afternoons (07-26,
+  07-21, 07-13: day bias +110 to +160 s). Labels of 30-60 min are
+  under-predicted by +525 s on average; 10-15 min labels are over-predicted
+  by -95 s, the usual regression to the mean.
+- Echo rows: 186, negligible. NM-unmatched: 657 rows, 8% of LTFM's SSE.
+  No ADS-B. Runway 35L carries 48%.
+- No operator, stand or hour pattern beyond that. Per-group bias would
+  remove at most ~0.3% of SSE in any grouping.
+
+**EGLL (RMSE 284; Jan 252, Jul 311):**
+- NM-unmatched rows: 466 (1.2%), 21% of EGLL's SSE (RMSE 1,204, bias
+  +312). The worst rows are on disruption afternoons (07-30, 07-06): label
+  ~ (T - SOBT) minus a few minutes, i.e. left the stand on time and waited
+  2-3 h.
+- Labels > 1 h: 240 rows, 34% of SSE.
+
+**Can "pushed on time, then waited" be predicted?** (`ltfm_egll_late_mix.py`,
+non-LIRF, departures more than 1 h late)
+- It's rare everywhere: 0-8% of NM-matched and 0-5% of NM-unmatched rows
+  (EGLL NM-unmatched 2.8%). The rate is not stable between months:
+  NM-matched Jan 4.5%, Jul 2.1%.
+- v21 is already calibrated by delay band: mean prediction ~ mean label in
+  every NM-matched band.
+- A cross-fit bias shift per (delay band, NM-unmatched) cell makes it
+  worse: 285.53 -> 286.03 (trimmed 222.49 -> 223.13).
+
+**Conclusion:** like LFPG (§13), no recording quirk like LIRF's echo. The
+error is genuine disruption-day congestion and rare long holds. METAR was
+the candidate signal for those afternoons and was already tested and not
+adopted (§24-§27). Nothing here to pre-register.
+
+## 54. Where the 46-point board gap probably is: a few huge labels, not the base model (2026-10-02)
+
+`tests/board_gap_anatomy.py`, log `logs/board_gap_anatomy.log`. No training.
+
+- **The gap in rows.** v21 270.2 vs the leader ~224 over 344,841 ranking
+  rows is 7.9e9 squared seconds. That equals one row off by 89,000 s, or 10
+  rows off by 28,000 s, or 100 off by 8,900 s. Fixing one row off by
+  40,000 s is worth ~9 points. Closing the gap uniformly would need -31% MSE
+  on every row.
+- **The holdout is that concentrated.** v21 cross-fit full RMSE 327.5.
+  Without the top 5 rows it's 265.1 (they carry 35% of SSE); without the
+  top 100, 238.8. The top 5: the two LFPG monsters (84,240 s, 58,206 s)
+  and three LIRF ~87,000 s "+24 h"-type rows. All five are NM-unmatched.
+- **Our base model isn't behind.** arnavhm13 reported holdout Jan 357 /
+  Jul 333, and Jan ~218 with labels > 1 h removed. v21 on the same cuts:
+  Jan 347 / Jul 311, Jan 204.7 (Jul 249.5).
+- **So the gap is most likely in how a few dozen giant 2026 labels are
+  hedged**, or plain luck on unpredictable ones (LFPG-type). It isn't in
+  base-model quality. GREKI's own remark: "two rows were ~30% of our
+  squared error".
+- **Blind spot.** Every decision since §47 uses trimmed RMSE, and the OOF
+  corrector skips base predictions > 7,200 s. Neither can see these rows.
+- **LIRF delayed departures** are the one population where the hedge can
+  be checked. 1-3 h NM-unmatched: echo rate 0.28, offset median 6,358 s,
+  prediction median 3,278 s (a squared-loss hedge would sit near ~2,600 s).
+  3-6 h NM-unmatched: echo rate 0.50, prediction median 8,841 s vs offset
+  13,380 s. This motivates `reports/lirf_hedge_preregistration.md`, which is
+  decided on full RMSE with a board A/B as the final arbiter.
