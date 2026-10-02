@@ -42,7 +42,9 @@ match for unmatched departures (tiers fb_dwell / fb_appear, flag
 adsb_fallback), writing to cache/adsb_pushback_v3/ (PROGRESS.md §56). The
 default output is unchanged. --v4 (§57) also lets matched rows without an
 appear/dwell tier take a fallback event that precedes their run, writing to
-cache/adsb_pushback_v4/.
+cache/adsb_pushback_v4/. --v5 (§60) adds, before the fallback, a second match pass for
+departures still unmatched: surface runs ending on a runway near takeoff without a
+received climb-out (flag adsb_rwy_end), writing to cache/adsb_pushback_v5/.
 """
 
 from __future__ import annotations
@@ -67,6 +69,8 @@ RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 OUT = ROOT / "cache" / "adsb_pushback"
 OUT_V3 = ROOT / "cache" / "adsb_pushback_v3"   # --v3: inferred stands + fallback (§56)
 OUT_V4 = ROOT / "cache" / "adsb_pushback_v4"   # --v4: v3 + fallback for matched, untiered rows (§57)
+OUT_V5 = ROOT / "cache" / "adsb_pushback_v5"   # --v5: v4 + runway-ending runs as matches (§60)
+RUNWAYS = ROOT / "data" / "external" / "runways.csv"
 
 SURFACE_GS = 40.0
 STATIONARY_GS = 1.0
@@ -135,7 +139,7 @@ def departures(day: dt.date) -> pl.DataFrame:
 
 
 def detect_day(day: dt.date, pos: pl.DataFrame, fallback: bool = False,
-               fb_matched: bool = False) -> pl.DataFrame:
+               fb_matched: bool = False, rwy: pl.DataFrame | None = None) -> pl.DataFrame:
     adsb = load_day(day)
     mv = attach_stand_coords(departures(day), pos)
     cov = dict(adsb.filter(pl.col("gs") < SURFACE_GS).group_by("airport")
@@ -197,13 +201,95 @@ def detect_day(day: dt.date, pos: pl.DataFrame, fallback: bool = False,
                             row.update(adsb_tier=tier, adsb_pushback_ts=float(pb),
                                        adsb_pb_gap_s=float(ts[k + 1] - ts[k]) if k + 1 < len(ts) else None,
                                        adsb_pb_dist_m=float(d_own[k]), adsb_pb_gs=float(gs[k]))
+        if rwy is not None:
+            for row in res.values():
+                row["adsb_rwy_end"] = False
+            if sub.height and ap_pos.height:
+                _rwy_end_pass(recs, res, sub, lat0, rwy.filter(pl.col("airport") == ap))
         if fallback:
             for row in res.values():
                 row["adsb_fallback"] = False
             if sub.height and ap_pos.height:
                 _fallback(recs, res, sub, lat0, fb_matched)
         out.extend(res.values())
-    return pl.DataFrame(out, schema=SCHEMA_V3 if fallback else SCHEMA)
+    schema = SCHEMA_V5 if rwy is not None else SCHEMA_V3 if fallback else SCHEMA
+    return pl.DataFrame(out, schema=schema)
+
+
+# ---- v5 runway-ending runs (PROGRESS.md §60). The takeoff match needs gs >= 40 within 120 s
+# of the last surface sample; many tracks lose the aircraft at the runway before the climb-out
+# is received. A departure still unmatched after that pass may take a surface run (split at
+# gaps > GAP_S, not itself a takeoff run) whose last sample is within RWY_END_M of a runway
+# centreline segment and in [T - RWY_END_BEFORE_S, T + RWY_END_AFTER_S]. Preference: runs that
+# visit the own stand, then |last - (T - 30 s)|; 1:1 greedy. The matched row then gets the
+# normal pushback tiering and first-sighting fields, flagged adsb_rwy_end.
+RWY_END_M = 200.0
+RWY_END_BEFORE_S = 300.0
+RWY_END_AFTER_S = 30.0
+SCHEMA_V5 = {**SCHEMA, "adsb_fallback": pl.Boolean, "adsb_rwy_end": pl.Boolean}
+
+
+def _seg_dist(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
+    ab = b - a
+    t = float(np.clip((p - a) @ ab / (ab @ ab), 0, 1))
+    return float(np.hypot(*(p - (a + t * ab))))
+
+
+def _rwy_end_pass(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float, rwy: pl.DataFrame) -> None:
+    open_recs = [r for r in recs if not res[r["MVT_ID_mvt"]]["adsb_matched"]]
+    if not open_recs or rwy.height == 0:
+        return
+    by_name = {r["runway"]: r for r in rwy.iter_rows(named=True)}
+    segs = []
+    for r in by_name.values():
+        o = by_name.get(r["opposite"])
+        if o is not None:
+            segs.append((to_xy([r["lat"]], [r["lon"]], lat0)[0], to_xy([o["lat"]], [o["lon"]], lat0)[0]))
+    runs = []
+    for _, g in sub.group_by("hex", maintain_order=True):
+        ts, gs = g["ts"].to_numpy(), g["gs"].to_numpy()
+        gs = np.where(np.isnan(gs), SURFACE_GS, gs)
+        xy = to_xy(g["lat"].to_numpy(), g["lon"].to_numpy(), lat0)
+        n, i = len(ts), 0
+        while i < n:
+            if gs[i] >= SURFACE_GS:
+                i += 1
+                continue
+            j = i + 1
+            while j < n and gs[j] < SURFACE_GS and ts[j] - ts[j - 1] <= GAP_S:
+                j += 1
+            takeoff = j < n and gs[j] >= SURFACE_GS and ts[j] - ts[j - 1] <= TAKEOFF_LOOKAHEAD_S
+            if not takeoff and min(_seg_dist(xy[j - 1], a, b) for a, b in segs) <= RWY_END_M:
+                runs.append((ts[i:j], gs[i:j], xy[i:j], ts[j - 1]))
+            i = j
+    if not runs:
+        return
+    last = np.array([r[3] for r in runs])
+    pairs = []
+    for r in open_recs:
+        t = r["mvt_ts"]
+        sxy = None if r["stand_lat"] is None else to_xy([r["stand_lat"]], [r["stand_lon"]], lat0)[0]
+        for ri in np.flatnonzero((last >= t - RWY_END_BEFORE_S) & (last <= t + RWY_END_AFTER_S)):
+            d_own = None if sxy is None else np.hypot(*(runs[ri][2] - sxy).T)
+            visits = d_own is not None and bool((d_own < R_STAND).any())
+            pairs.append((not visits, abs(last[ri] - (t - 30.0)), r["MVT_ID_mvt"], int(ri), d_own, t))
+    pairs.sort(key=lambda p: (p[0], p[1]))
+    used_m, used_r = set(), set()
+    for _, _, mid, ri, d_own, mts in pairs:
+        if mid in used_m or ri in used_r:
+            continue
+        used_m.add(mid); used_r.add(ri)
+        ts, gs, _, to = runs[ri]
+        row = res[mid]
+        row.update(adsb_matched=True, adsb_rwy_end=True, adsb_takeoff_gap_s=float(to - mts),
+                   adsb_n_pts=len(ts), adsb_first_ts=float(ts[0]), adsb_first_gs=float(gs[0]))
+        if d_own is not None:
+            row.update(adsb_first_own_m=float(d_own[0]), adsb_min_own_m=float(d_own.min()))
+            pb, tier, k = pushback(ts, gs, d_own)
+            if tier is not None:
+                row.update(adsb_tier=tier, adsb_pushback_ts=float(pb),
+                           adsb_pb_gap_s=float(ts[k + 1] - ts[k]) if k + 1 < len(ts) else None,
+                           adsb_pb_dist_m=float(d_own[k]), adsb_pb_gs=float(gs[k]))
 
 
 # ---- v3 fallback (PROGRESS.md §56): unmatched departures whose aircraft is seen at the own
@@ -304,18 +390,21 @@ def _fallback(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float, fb_ma
             prev_t = t
 
 
-def main(days: list[dt.date] | None = None, v3: bool = False, v4: bool = False) -> None:
+def main(days: list[dt.date] | None = None, v3: bool = False, v4: bool = False,
+         v5: bool = False) -> None:
+    v4 = v4 or v5
     v3 = v3 or v4
+    rwy = pl.read_csv(RUNWAYS) if v5 else None
     pos = stand_positions(load_stands())
     out_dir = OUT
     if v3:
         from src.ingest.stand_infer import load_inferred
         inf = load_inferred().join(pos.select("airport", "key"), on=["airport", "key"], how="anti")
         pos = pl.concat([pos, inf])
-        out_dir = OUT_V4 if v4 else OUT_V3
+        out_dir = OUT_V5 if v5 else OUT_V4 if v4 else OUT_V3
     out_dir.mkdir(parents=True, exist_ok=True)
     for day in days or available_days():
-        df = detect_day(day, pos, fallback=v3, fb_matched=v4)
+        df = detect_day(day, pos, fallback=v3, fb_matched=v4, rwy=rwy)
         df.write_parquet(out_dir / f"day={day.isoformat()}.parquet")
         n_tier = df.filter(pl.col("adsb_tier").is_in(["appear", "dwell"])).height
         print(f"{day}: {df.height:,} DEP, matched {df['adsb_matched'].sum():,}, "
@@ -328,4 +417,4 @@ def load_all() -> pl.DataFrame:
 
 if __name__ == "__main__":
     days = [dt.date.fromisoformat(a) for a in sys.argv[1:] if not a.startswith("--")]
-    main(days or None, v3="--v3" in sys.argv, v4="--v4" in sys.argv)
+    main(days or None, v3="--v3" in sys.argv, v4="--v4" in sys.argv, v5="--v5" in sys.argv)

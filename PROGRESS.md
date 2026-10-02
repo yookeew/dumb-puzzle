@@ -3908,3 +3908,46 @@ holdout's "no ADS-B rows get worse" finding carried to the board.
 |---|---|---|
 | v24 | learned ADS-B combiner | 265.66 |
 | **v25** | v24 restricted to rows with ADS-B information | **264.39** (best) |
+
+## 59. Combiner v2 (ADS-B rows only, regularised) -- gate narrow PASS; v26 built, board pending (2026-10-02)
+
+`reports/adsb_combiner_v2_preregistration.md`.
+- **Gate vs v24-restricted:** pooled trimmed -0.12 (P 0.013); Jul -0.19,
+  Jan -0.02; full -0.10. Per airport it's mixed (EDDM +0.9, LSZH +0.4).
+- **Fits:** best_iter 4,999 / 3,014; the production fit hits the
+  5,000-round cap.
+- **v26** = `src/post/adsb_combiner.py --v2`: RMS 21.8 s from v25. Keep iff
+  the board < 264.39. The expected effect is a fraction of a point either
+  way.
+
+**v26 (combiner v2) NOT submitted**: only one submission was left today
+and its expected gain was a fraction of a point. It was set aside for v5
+below. The `smart-jigsaw_v26.parquet` name is reused for whichever build
+is submitted next.
+
+## 60. Brainstorm round 2: flight-number encoding dead; v5 runway-ending matches pre-registered (2026-10-02)
+
+**Flight-number / callsign residual encoding: dead.** On the 10 OOF
+training months (non-LIRF, labels <= 5 h, residual RMS 205), even/odd-month
+shrunk group means of the OOF residual barely move it:
+- (airport, FLIGHT_mvt): 194.8 -> 195.3 and 211.5 -> 211.8;
+- (airport, callsign) and (airport, flight, hour): the same;
+- stand and operator controls: the same.
+
+The base model is calibrated at every identity level; what's left is
+day-to-day, row-level error.
+
+**Weather** was already adopted in §24 (it's in production), so it's not
+a new lever.
+
+**v5 runway-ending matches** (`src/link/adsb_pushback.py --v5` ->
+`cache/adsb_pushback_v5/`):
+- At EDDF/EGLL/LSZH/LEBL/LEMD, 60-95% of unmatched departures have a
+  surface run ending within 200 m of a runway in [T-300 s, T+30 s] whose
+  climb-out wasn't received. LFPG has only 9-13%.
+- A second match pass takes them (flag `adsb_rwy_end`). Non-holdout days:
+  +568 / +308 matches; 95 get an at-stand pushback (69% within ±120 s);
+  the rest add only first-sighting info (corr 0.03).
+- Gate pre-registered in `reports/adsb_v5_preregistration.md`: v25's
+  restricted combiner on v5 with the flag vs v25's method, trimmed rule.
+  Build: `src/post/adsb_combiner.py --v5`.

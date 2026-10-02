@@ -58,3 +58,29 @@ better).
 ## Amendments
 
 (none)
+
+## Results (2026-10-02, `tests/adsb_combiner_v2_test.py`, log `logs/adsb_combiner_v2_test.log`; run after commit e1fe6a9)
+
+**Primary: ADOPT, narrowly.** v2 vs the v24 combiner restricted to ADS-B
+rows (159,451 holdout rows with ADS-B information):
+
+| trimmed RMSE | base | v2 | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 288.41 | 288.23 | −0.19 | [−0.35, −0.03] | 0.010 |
+| B: Jan (fit Jul) | 216.84 | 216.82 | −0.02 | [−0.14, +0.10] | 0.376 |
+| pooled | 258.93 | 258.81 | −0.12 | [−0.23, −0.02] | 0.013 |
+| guard: pooled full | 324.01 | 323.92 | −0.10 | [−0.19, −0.01] | 0.014 |
+
+- **Per airport:** EDDF −0.79, EGLL −0.48, EHAM −0.46, LFPG −0.22,
+  LEMD −0.07; EDDM +0.86, LSZH +0.36, LEBL +0.11.
+- **Best iterations 4,999 / 3,014.** Regularisation narrowed the gap
+  (v24: 4,614 / 1,008) but the Jan fit now hits the cap.
+- **Reported:** v2 vs the unrestricted v24 combiner is pooled −1.24, most
+  of it from the restriction (§58, v25).
+
+**v26 build** (`src/post/adsb_combiner.py --v2`, log
+`logs/adsb_combiner_v2_build.log`).
+- Fit on 148,157 Jan+Jul ADS-B rows; best_iter 5,000 (the cap).
+- `data/submissions/smart-jigsaw_v26.parquet`: 196,621 rows differ from
+  v25, RMS 21.8 s.
+- Keep iff the board < 264.39 (v25).

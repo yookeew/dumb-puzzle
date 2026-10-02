@@ -11,6 +11,12 @@ Run:  .venv/Scripts/python.exe src/post/adsb_combiner.py [--restricted]
   --restricted (reports/adsb_combiner_restricted_preregistration.md): the combiner only on
   rows with ADS-B information (matched, or a fallback tier); every other row keeps v23's
   value -> data/submissions/smart-jigsaw_v25.parquet
+  --v2 (reports/adsb_combiner_v2_preregistration.md): combiner v2, fit and applied only on
+  rows with ADS-B information, stronger regularisation (implies --restricted)
+  -> data/submissions/smart-jigsaw_v26.parquet
+  --v5 (reports/adsb_v5_preregistration.md): v25's restricted combiner on v5 detections
+  (runway-ending matches) with the rwy_end input (implies --restricted)
+  -> data/submissions/smart-jigsaw_v26.parquet
 """
 
 from __future__ import annotations
@@ -35,10 +41,14 @@ import ltfm_egll_anatomy as A  # noqa: E402
 SUB = ROOT / "data" / "submissions"
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
-RESTRICTED = "--restricted" in sys.argv
+V2 = "--v2" in sys.argv
+V5 = "--v5" in sys.argv
+RESTRICTED = "--restricted" in sys.argv or V2 or V5
 V23 = SUB / "smart-jigsaw_v23.parquet"
-V24 = SUB / ("smart-jigsaw_v25.parquet" if RESTRICTED else "smart-jigsaw_v24.parquet")
+V24 = SUB / ("smart-jigsaw_v26.parquet" if (V2 or V5) else "smart-jigsaw_v25.parquet" if RESTRICTED
+             else "smart-jigsaw_v24.parquet")
 ENG = ["lgb", "catcorr"]
+DET_DIR = ROOT / "cache" / ("adsb_pushback_v5" if V5 else "adsb_pushback_v4")
 CEIL, LIRF_CEIL = 10800, 140000
 
 
@@ -52,29 +62,37 @@ def ranking_frame() -> pl.DataFrame:
           .select(pl.col("MVT_ID_mvt").cast(pl.Int64), "ADEP_mvt",
                   hour=pl.col("MVT_TIME_UTC_mvt").dt.hour(),
                   mvt_ts=pl.col("MVT_TIME_UTC_mvt").dt.epoch("ms") / 1000.0))
-    det = pl.concat([pl.read_parquet(p) for p in sorted(C.V4.glob("day=2026-*.parquet"))])
-    det = det.select("MVT_ID_mvt", *V.DET_COLS, "adsb_fallback")
+    det = pl.concat([pl.read_parquet(p) for p in sorted(DET_DIR.glob("day=2026-*.parquet"))])
+    det = det.select("MVT_ID_mvt", *V.DET_COLS, "adsb_fallback", *(["adsb_rwy_end"] if V5 else []))
     return (rk.join(mv, on="MVT_ID_mvt", how="left").join(det, on="MVT_ID_mvt", how="left")
             .with_columns(adsb_taxi=pl.col("mvt_ts") - pl.col("adsb_pushback_ts")))
 
 
 def main() -> None:
-    ho = V.with_det(A.load(), V.read_det(C.V4))
+    if V5:
+        import adsb_v5_test as T5
+        ho = V.with_det(A.load(), T5.read_det_v5())
+    else:
+        ho = V.with_det(A.load(), V.read_det(C.V4))
+    feats = (lambda d, s, a: T5.features_v5(d, s, a)) if V5 else         (lambda d, s, a: C.features(d, s, a).to_numpy().astype(np.float64))
     w, _ = nnls(ho.select(ENG).to_numpy(), ho["taxi"].to_numpy())
     print("stack weights:", dict(zip(ENG, np.round(w, 4))))
     airports = sorted(ho["ADEP_mvt"].unique().to_list())
     s_ho = ho.select(ENG).to_numpy() @ w
-    X = C.features(ho, s_ho, airports).to_numpy().astype(np.float64)
+    X = feats(ho, s_ho, airports)
     fit = ((ho["taxi"] <= C.TRIM) & (ho["ADEP_mvt"] != "LIRF")).to_numpy()
+    if V2:
+        import adsb_combiner_v2_test as C2
+        fit = fit & ho.select(C2.has_adsb()).to_series().to_numpy()
     y = ho["taxi"].to_numpy() - s_ho
     inner = (ho["day"].dt.day() % 5 == 0).to_numpy()[fit]
-    m, best = C.fit_combiner(X[fit], y[fit], inner)
+    m, best = (C2.fit_v2 if V2 else C.fit_combiner)(X[fit], y[fit], inner)
     print(f"combiner fit on {fit.sum():,} holdout rows; best_iter {best}")
 
     rk = ranking_frame()
     assert rk["ADEP_mvt"].null_count() == 0
     s_rk = rk.select(ENG).to_numpy() @ w
-    Xr = C.features(rk, s_rk, airports).to_numpy().astype(np.float64)
+    Xr = feats(rk, s_rk, airports)
     pred = s_rk + m.predict(Xr)
     v23 = pl.read_parquet(V23).select(pl.col("MVT_ID_mvt").cast(pl.Int64), v23=pl.col("TAXITIME_SEC_mvt").cast(pl.Float64))
     rk = rk.with_columns(comb=pl.Series(pred)).join(v23, on="MVT_ID_mvt", how="left")
