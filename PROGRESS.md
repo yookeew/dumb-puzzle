@@ -3997,3 +3997,28 @@ is weak (corr 0.03 at scoping) and their pushbacks are few. v25 stays.
 
 **Inbound-identity and v5 runway-end matching are both closed (§61, v5
 gate). The remaining ADS-B lever is training data, not detection.**
+
+## 63. Rome: arrival echo as a live echo signal -- real but low reach (2026-10-02)
+
+`tests/lirf_arrival_echo_scope.py`; the 10 non-holdout training months, no
+holdout.
+- **Context:** LIRF is ~36% of the estimated 2026 squared error. Most of
+  it is the echo hedge on delayed flights (label = normal taxi or
+  T - SOBT).
+- **Correction to my earlier claim:** the echo rate among delayed LIRF
+  departures is 8-14% in *every* month. The "0.8% outside Jan/Jul" figure
+  came from a buggy exact-equality echo definition.
+- **Same hour (±30/60/180 min arrival echo rate): weak.** Delayed-flight
+  echo goes 0.09 -> 0.13-0.22 only in the top bins.
+- **Same operator, same day: strong, and it adds to the operator's
+  long-run (leave-month-out) echo rate.** For operators with a long-run
+  rate of 0.15-0.30, same-day arrival echo > 0.6 lifts departure echo
+  0.16 -> 0.94. For long-run > 0.5, it lifts 0.46 -> 0.93. Echo looks
+  like a per-operator, per-day recording failure that the arrivals reveal
+  (arrival block times are visible in 2026).
+- **But reach is low where it matters:** only 55 of 436 delayed-echo rows
+  (13%) fall on days with same-day operator arrival echo > 0.3. Most rows
+  it flags are punctual, where echo ~ physical taxi anyway.
+- **Verdict:** a valid, split-blind feature candidate (same-day operator
+  arrival echo rate at LIRF) for a future corrector or base retrain.
+  Expected < 1 board point. Not pursued now.
