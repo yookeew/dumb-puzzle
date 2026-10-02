@@ -3900,3 +3900,11 @@ board gain is ~1.5x the holdout gain (-2.63).
 - `src/post/adsb_combiner.py --restricted` ->
   `data/submissions/smart-jigsaw_v25.parquet`. The rebuilt v24 (no flag)
   is deterministic: same 75.6 s RMS vs v23.
+
+**Board (2026-10-02): v25 = 264.39, -1.27 vs v24. ADOPTED, new best.** The
+holdout's "no ADS-B rows get worse" finding carried to the board.
+
+| version | what | score |
+|---|---|---|
+| v24 | learned ADS-B combiner | 265.66 |
+| **v25** | v24 restricted to rows with ADS-B information | **264.39** (best) |

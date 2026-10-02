@@ -41,3 +41,8 @@ tried.
 ## Amendments
 
 (none)
+
+## Result
+
+**Board: v25 = 264.39 (v24 265.66, −1.27). ADOPTED; new best.** Applying
+the combiner where there's no ADS-B was harming the board too.
