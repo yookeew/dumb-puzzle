@@ -1,0 +1,30 @@
+v24 combiner: {'fit 2025-01': {'best_iter': 4614, 'top_gain': ['a_rel:0.24', 'L_rel:0.17', 's:0.10', 'adsb_first_own_m:0.07', 'L:0.07', 'adsb_pb_dist_m:0.07', 'airport:0.06', 'hour:0.04']}, 'fit 2025-07': {'best_iter': 1008, 'top_gain': ['a_rel:0.23', 'L_rel:0.17', 'airport:0.10', 's:0.08', 'adsb_first_own_m:0.07', 'adsb_pb_dist_m:0.07', 'L:0.06', 'hour:0.06']}}
+rows with ADS-B information: v4 159,451, v5 178,537 (+19,086); runway-ending matches 26,456
+v5 combiner: {'fit 2025-01': {'best_iter': 3523}, 'fit 2025-07': {'best_iter': 428}}
+
+=== PRIMARY: restricted combiner on v5 vs v25 method ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 288.41  new= 288.44  delta= +0.03  CI[-0.12,+0.18]  P(worse)=0.645
+  B  Jan (fit Jul)             base= 216.84  new= 216.90  delta= +0.05  CI[-0.23,+0.36]  P(worse)=0.637
+  POOLED trimmed               base= 258.93  new= 258.97  delta= +0.04  CI[-0.10,+0.18]  P(worse)=0.678
+ FULL (guard):
+  POOLED full                  base= 324.01  new= 324.04  delta= +0.03  CI[-0.09,+0.15]  P(worse)=0.695
+
+PRIMARY DECISION: REJECT -> stop
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta |
+| ---      | ---    | ---    | ---     | ---   |
+| str      | f64    | f64    | u32     | f64   |
+|----------|--------|--------|---------|-------|
+| EDDF     | 175.13 | 174.05 | 32086   | -1.08 |
+| EDDM     | 138.61 | 138.73 | 17058   | 0.12  |
+| EGLL     | 279.47 | 279.29 | 18819   | -0.18 |
+| EHAM     | 158.45 | 159.63 | 40693   | 1.18  |
+| LEBL     | 200.36 | 200.53 | 27589   | 0.17  |
+| LEMD     | 176.32 | 176.47 | 4025    | 0.15  |
+| LFPG     | 268.68 | 268.58 | 5023    | -0.11 |
+| LIRF     | 554.20 | 554.20 | 0       | 0.00  |
+| LSZH     | 180.75 | 181.55 | 20857   | 0.80  |
+| LTFM     | 265.42 | 265.42 | 1       | 0.00  |
+  newly covered rows     n= 19085: base 272.1 -> new 273.1
+  rows covered in both   n=159434: base 239.7 -> new 239.7

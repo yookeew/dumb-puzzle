@@ -36,7 +36,8 @@ from pathlib import Path
 import polars as pl
 
 ROOT = Path(__file__).resolve().parents[2]
-RAW_DIRS = [ROOT / "external-data" / "adsb", ROOT / "external-data" / "adsb-fetch"]  # later wins
+RAW_DIRS = [ROOT / "external-data" / "adsb", ROOT / "external-data" / "adsb-fetch",
+            ROOT / "external-data" / "adsb-restofyear"]  # later wins; restofyear = other 2025 months (§62)
 OUT = ROOT / "data" / "external" / "adsb"
 COLS = ["hex", "reg", "ts", "lat", "lon", "gs", "alt_baro", "is_ground", "airport",
         "track", "src"]

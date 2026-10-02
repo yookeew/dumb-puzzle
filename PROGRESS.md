@@ -3951,3 +3951,49 @@ a new lever.
 - Gate pre-registered in `reports/adsb_v5_preregistration.md`: v25's
   restricted combiner on v5 with the flag vs v25's method, trimmed rule.
   Build: `src/post/adsb_combiner.py --v5`.
+
+## 61. Inbound-arrival ADS-B identity (hex) for pushback -- killed at scoping (2026-10-02)
+
+`tests/adsb_inbound_hex_scope.py`; non-holdout days only.
+- **Method:** link each departure to its inbound arrival (Stage 1), match
+  the arrival's landing in ADS-B (gs drops through 40 kt within ±180 s of
+  the landing time) to get the hex, take the parking spot where it comes
+  to rest, and read the pushback as the last moment that hex is at the
+  spot before T.
+- **Identity alone is unreliable.** The hex is found for 54-61% of
+  departures, but parallel-runway landings make the landing-time match
+  ambiguous: 38-50% of readings are off by more than 600 s.
+- **Confirmed identity** (the same hex takes off within ±180 s of T;
+  ~1,000-1,300 rows a day) is accurate (median -90 s, 12-18% off by more
+  than 600 s). But 86-88% of those rows already have an appear/dwell tier
+  in v4. The new ones (1.1-1.2% of departures) are poor: 8-25% within
+  ±120 s.
+- **Conclusion:** the departures we can't observe aren't an identity
+  problem. The receivers don't see the aircraft at its stand. Not
+  pursued.
+
+**v5 gate (2026-10-02): REJECT.** Pooled trimmed +0.04 (P(worse) 0.68).
+The 19,085 newly covered rows get worse (272.1 -> 273.1). The extra
+runway-ending matches add mostly noise: their first-sighting information
+is weak (corr 0.03 at scoping) and their pushbacks are few. v25 stays.
+
+## 62. Plan: ADS-B for the other 2025 months, to retrain the combiner (2026-10-02)
+
+- **Why:** the combiner (§58) is trained only on the Jan/Jul 2025 holdout
+  (~318k rows). Its fits are unstable (best_iter 4,614 vs 1,008). Its
+  coverage mix also differs from 2026: EGLL detected pushbacks are ~3% in
+  Jan/Jul 2025 vs 22-75% in 2026.
+- **The other 10 months already have honest out-of-fold base
+  predictions** (`cache/oof/{lgb,cat}_mixed/`), so their ADS-B would give a
+  combiner several times more training rows, from months whose coverage
+  looks more like 2026.
+- **Fetch:** the Colab cell "ADS-B fetch, the other 2025 months" in
+  `notebooks/colab_train.py` pulls days 1-10 of each month (Sep-Dec
+  first) into its own Drive folder `adsb_restofyear/`. Copy it back to
+  `external-data/adsb-restofyear/`; `src/ingest/normalise_adsb.py` now
+  reads that folder too.
+- **Then:** a pre-registered combiner retrain, still cross-fit by month
+  and scored on the Jan/Jul holdout.
+
+**Inbound-identity and v5 runway-end matching are both closed (§61, v5
+gate). The remaining ADS-B lever is training data, not detection.**

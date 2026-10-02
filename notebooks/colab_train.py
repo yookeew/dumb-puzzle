@@ -79,5 +79,61 @@ run(engine="cat_ctr2", target="mixed", eta=0.05, seed=42, name="cat_ctr2_mixed",
     ev_out="cache/eval/cat_ctr2_mixed_holdout_ev.parquet")
 
 # %%
+# ADS-B fetch, Jan + Jul 2025/2026 (src/ingest/fetch_adsb.py). DONE -- kept for reference.
+# import subprocess, time, pathlib
+# R   = '/content/drive/MyDrive/smart-jigsaw'
+# OUT = f'{R}/adsb_fetch'          # fresh folder, don't reuse the old contaminated one
+# jobs = {
+#     'jan': '2025-01-01:2025-01-31 2026-01-01:2026-01-31',
+#     'jul': '2025-07-01:2025-07-31 2026-07-01:2026-07-31',
+# }
+# procs = {k: subprocess.Popen(
+#             f'python -u {R}/src/ingest/fetch_adsb.py --days {v} --out {OUT} > {R}/fetch_{k}.log 2>&1',
+#             shell=True) for k, v in jobs.items()}
+# while any(p.poll() is None for p in procs.values()):
+#     time.sleep(300)
+#     for k in procs:
+#         lines = pathlib.Path(f'{R}/fetch_{k}.log').read_text().strip().splitlines()
+#         print(time.strftime('%H:%M'), k, '|', lines[-1] if lines else '(starting)')
+# print('all done'); print(open(f'{OUT}/manifest.csv').read())
+
+# %%
+# ADS-B fetch, the other 2025 months (PROGRESS.md §62): training data for the ADS-B
+# combiner beyond the Jan/Jul holdout, from months whose receiver coverage looks like 2026.
+# Days 1-10 of each month; Sep-Dec first (closest to 2026), then Feb-Jun + Aug. Own OUT
+# folder (adsb_restofyear), separate from the Jan/Jul pull; fetch_adsb.py skips days
+# already in it, so after a disconnect just re-run this cell. Runs MAX_PAR jobs at a time
+# (one month per job). Copy back: the whole adsb_restofyear folder ->
+# external-data/adsb-restofyear/ (normalise_adsb.py reads it), then locally:
+# normalise_adsb.py, then adsb_pushback.py --v4.
+import subprocess, time, pathlib
+from google.colab import drive
+drive.mount('/content/drive')
+R   = '/content/drive/MyDrive/smart-jigsaw'
+OUT = f'{R}/adsb_restofyear'
+MAX_PAR = 4
+assert pathlib.Path(f'{R}/src/ingest/fetch_adsb.py').exists(), f'fetch_adsb.py not found under {R}'
+pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
+months = ['2025-09', '2025-10', '2025-11', '2025-12',            # priority: closest to 2026
+          '2025-08', '2025-06', '2025-05', '2025-04', '2025-03', '2025-02']
+queue = [(m, f'{m}-01:{m}-10') for m in months]
+running = {}
+while queue or running:
+    while queue and len(running) < MAX_PAR:
+        m, days = queue.pop(0)
+        running[m] = subprocess.Popen(
+            f'python -u {R}/src/ingest/fetch_adsb.py --days {days} --out {OUT} > {OUT}/fetch_{m}.log 2>&1',
+            shell=True)
+    time.sleep(300)
+    for m in list(running):
+        log = pathlib.Path(f'{OUT}/fetch_{m}.log')
+        lines = log.read_text().strip().splitlines() if log.exists() else ['(no log file yet)']
+        print(time.strftime('%H:%M'), m, '|', lines[-1] if lines else '(starting)')
+        if running[m].poll() is not None:
+            print(time.strftime('%H:%M'), m, 'finished, exit', running[m].returncode)
+            del running[m]
+print('all done'); print(open(f'{OUT}/manifest.csv').read())
+
+# %%
 # Submissions land in data/submissions/<name>.parquet — download and upload to
 # the challenge portal as <team>_v<n>.parquet.

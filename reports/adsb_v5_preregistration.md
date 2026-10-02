@@ -72,3 +72,22 @@ flag (`src/post/adsb_combiner.py`). **Keep iff the board < 264.39.**
 ## Amendments
 
 (none)
+
+## Results (2026-10-02, `tests/adsb_v5_test.py`, log `logs/adsb_v5_test.log`; run after commit 3b29a3d)
+
+**Primary: REJECT.** v5 adds 26,456 runway-ending matches on the holdout
+(rows with ADS-B information 159,451 → 178,537).
+
+| trimmed RMSE | base (v25 method) | v5 | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 288.41 | 288.44 | +0.03 | [−0.12, +0.18] | 0.645 |
+| B: Jan (fit Jul) | 216.84 | 216.90 | +0.05 | [−0.23, +0.36] | 0.637 |
+| pooled | 258.93 | 258.97 | +0.04 | [−0.10, +0.18] | 0.678 |
+| guard: pooled full | 324.01 | 324.04 | +0.03 | | 0.695 |
+
+- **Newly covered rows** (19,085): 272.1 → 273.1. **Rows covered in both:**
+  239.7 → 239.7.
+- **Per airport:** EDDF −1.08, but EHAM +1.18 and LSZH +0.80.
+- Best iterations 3,523 / 428 (v24: 4,614 / 1,008).
+- Per the rule: stop, with no other window, distance or matching rule.
+  v25 stays.
