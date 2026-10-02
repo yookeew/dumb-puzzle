@@ -104,3 +104,16 @@ local repo:**
 - The two older Colab extracts of those days are corrupted.
   `normalise_adsb.py` reads `external-data/adsb-restofyear/` last, so the
   fresh files replace them.
+
+**2026-10-02, fourth amendment, before any extra-month day reached the
+local repo (label-free):** a thin-day rule.
+- **The rule:** a listed day is used only if its last row in
+  `external-data/adsb-restofyear/manifest.csv` has status `ok` or
+  `tolerant` **and** its point count is ≥ 50% of the median point count of
+  that month's listed days (statuses ok/tolerant).
+- **Reason:** a day read with many damaged archive members skipped has
+  truncated tracks. Those create artificial "first seen far from the stand"
+  patterns.
+- The test prints the dropped days. The rule is applied as written,
+  whatever it drops.
+

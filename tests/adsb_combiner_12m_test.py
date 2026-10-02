@@ -34,13 +34,32 @@ RAW = ROOT / "data" / "raw"
 MONTHS = ("2025-09", "2025-10", "2025-11", "2025-12")   # amendment 2026-10-02: Sep-Dec only
 DAYS = {1, 2, 3, 4, 7, 10, 13, 16, 19, 22, 25, 28}      # second amendment: spread over the month
 EXTRA_DAYS = {"2025-09-15", "2025-11-15"}                # third amendment: re-downloaded fresh
+MANIFEST = ROOT / "external-data" / "adsb-restofyear" / "manifest.csv"
+MIN_FRAC = 0.5                                           # fourth amendment: thin-day rule
+
+
+def good_days() -> set[str]:
+    """Fourth amendment: keep a listed day iff its last manifest row has status ok/tolerant and
+    >= MIN_FRAC x the median points of the listed days in its month. Label-free."""
+    m = pl.read_csv(MANIFEST).with_row_index("_i").sort("_i").group_by("day").last()
+    m = m.filter(pl.col("day").str.slice(0, 7).is_in(MONTHS)
+                 & (pl.col("day").str.slice(8, 2).cast(pl.Int32).is_in(list(DAYS))
+                    | pl.col("day").is_in(list(EXTRA_DAYS))))
+    m = m.with_columns(med=pl.col("points").filter(pl.col("status").is_in(["ok", "tolerant"]))
+                       .median().over(pl.col("day").str.slice(0, 7)))
+    keep = m.filter(pl.col("status").is_in(["ok", "tolerant"]) & (pl.col("points") >= MIN_FRAC * pl.col("med")))
+    drop = m.join(keep.select("day"), on="day", how="anti")
+    with pl.Config(tbl_formatting="ASCII_MARKDOWN", tbl_rows=60):
+        print(f"thin-day rule: {keep.height} days kept, {drop.height} dropped")
+        if drop.height:
+            print(drop.select("day", "status", "bad_members", "points", "med").sort("day"))
+    return set(keep["day"].to_list())
 
 
 def oof_frame() -> pl.DataFrame:
     """Labelled DEP rows on non-holdout 2025 days that have v4 detections, with the OOF stack."""
-    paths = [p for p in sorted(C.V4.glob("day=2025-*.parquet"))
-             if p.name[4:11] in MONTHS
-             and (int(p.name[12:14]) in DAYS or p.name[4:14] in EXTRA_DAYS)]
+    keep = good_days()
+    paths = [p for p in sorted(C.V4.glob("day=2025-*.parquet")) if p.name[4:14] in keep]
     det = pl.concat([pl.read_parquet(p) for p in paths]).select("MVT_ID_mvt", *V.DET_COLS, "adsb_fallback")
     pr = None
     for e in ("lgb", "cat"):

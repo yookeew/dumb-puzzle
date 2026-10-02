@@ -32,3 +32,5 @@ data/external/adsb/
 external-data/adsb/
 external-data/adsb-fetch/
 external-data/adsb-restofyear/
+external-data/adsb_restofyear/
+external-data/adsb-later/
