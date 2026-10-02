@@ -1,0 +1,47 @@
+holdout rows 344,339; v23 cross-fit trimmed RMSE 262.68
+combiner (v4): {'fit 2025-01': {'best_iter': 4614, 'top_gain': ['a_rel:0.24', 'L_rel:0.17', 's:0.10', 'adsb_first_own_m:0.07', 'L:0.07', 'adsb_pb_dist_m:0.07', 'airport:0.06', 'hour:0.04']}, 'fit 2025-07': {'best_iter': 1008, 'top_gain': ['a_rel:0.23', 'L_rel:0.17', 'airport:0.10', 's:0.08', 'adsb_first_own_m:0.07', 'adsb_pb_dist_m:0.07', 'L:0.06', 'hour:0.06']}}
+
+=== PRIMARY: learned combiner on v4 detections ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 291.76  new= 289.82  delta= -1.94  CI[-3.06,-0.93]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 221.34  new= 217.53  delta= -3.82  CI[-5.17,-2.51]  P(worse)=0.000
+  POOLED trimmed               base= 262.68  new= 260.05  delta= -2.63  CI[-3.49,-1.86]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.02  new= 324.94  delta= -2.08  CI[-2.98,-1.35]  P(worse)=0.000
+
+PRIMARY DECISION: ADOPT -> build, board A/B
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta  |
+| ---      | ---    | ---    | ---     | ---    |
+| str      | f64    | f64    | u32     | f64    |
+|----------|--------|--------|---------|--------|
+| EDDF     | 182.05 | 175.32 | 36830   | -6.72  |
+| EDDM     | 148.71 | 139.48 | 27091   | -9.23  |
+| EGLL     | 282.68 | 279.81 | 40210   | -2.86  |
+| EHAM     | 175.05 | 158.50 | 40949   | -16.55 |
+| LEBL     | 209.70 | 200.41 | 28985   | -9.29  |
+| LEMD     | 177.98 | 174.19 | 35328   | -3.79  |
+| LFPG     | 268.15 | 269.06 | 39588   | 0.91   |
+| LIRF     | 554.20 | 554.20 | 0       | 0.00   |
+| LSZH     | 190.91 | 180.63 | 22289   | -10.27 |
+| LTFM     | 265.42 | 273.46 | 46539   | 8.04   |
+shape: (5, 4)
+| g                    | len    | base   | new    |
+| ---                  | ---    | ---    | ---    |
+| str                  | u32    | f64    | f64    |
+|----------------------|--------|--------|--------|
+| appear/dwell         | 62404  | 162.45 | 146.17 |
+| fb (matched, v4)     | 16070  | 258.43 | 250.87 |
+| fb (unmatched)       | 16715  | 244.03 | 228.55 |
+| matched, no pushback | 64245  | 308.69 | 304.22 |
+| no ADS-B             | 184874 | 274.40 | 276.37 |
+
+combiner (v3): {'fit 2025-01': {'best_iter': 4755, 'top_gain': ['a_rel:0.27', 'L_rel:0.14', 's:0.10', 'adsb_pb_dist_m:0.07', 'L:0.07', 'adsb_first_own_m:0.06', 'airport:0.06', 'hour:0.05']}, 'fit 2025-07': {'best_iter': 694, 'top_gain': ['a_rel:0.29', 'L_rel:0.14', 'airport:0.10', 's:0.08', 'adsb_pb_dist_m:0.07', 'adsb_first_own_m:0.06', 'hour:0.06', 'L:0.05']}}
+
+=== reported: same combiner on v3 detections ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 291.76  new= 290.00  delta= -1.76  CI[-2.89,-0.80]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 221.34  new= 217.58  delta= -3.76  CI[-5.04,-2.52]  P(worse)=0.000
+  POOLED trimmed               base= 262.68  new= 260.19  delta= -2.49  CI[-3.29,-1.73]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.02  new= 325.04  delta= -1.97  CI[-2.88,-1.33]  P(worse)=0.000

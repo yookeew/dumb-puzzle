@@ -88,3 +88,49 @@ arbiter.
 ## Amendments
 
 (none)
+
+## Results (2026-10-02, `tests/adsb_combiner_test.py`, log `logs/adsb_combiner_test.log`; run after commit cb77fe7)
+
+**Primary: ADOPT.**
+
+| trimmed RMSE | base (v23) | combiner | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 291.76 | 289.82 | −1.94 | [−3.06, −0.93] | 0.000 |
+| B: Jan (fit Jul) | 221.34 | 217.53 | −3.82 | [−5.17, −2.51] | 0.000 |
+| pooled | 262.68 | 260.05 | −2.63 | [−3.49, −1.86] | 0.000 |
+| guard: pooled full | 327.02 | 324.94 | −2.08 | [−2.98, −1.35] | 0.000 |
+
+- **Per airport (trimmed):**
+  - better: EHAM −16.55, LSZH −10.27, LEBL −9.29, EDDM −9.23,
+    EDDF −6.72, LEMD −3.79, EGLL −2.86;
+  - **worse: LTFM +8.04, LFPG +0.91** (airports with little or no
+    ADS-B).
+- **By ADS-B group (trimmed RMSE, v23 → combiner):**
+
+  | group | v23 | combiner |
+  |---|---|---|
+  | appear/dwell | 162.5 | 146.2 |
+  | unmatched fallback | 244.0 | 228.6 |
+  | matched fallback (v4) | 258.4 | 250.9 |
+  | matched, no pushback | 308.7 | 304.2 |
+  | **no ADS-B** | **274.4** | **276.4 (worse)** |
+
+- **Observed flaw (post-hoc, not acted on):** the combiner also sees
+  airport, hour and `s`. It learns month-specific biases (LTFM: −39 s in
+  Jan vs +46 s in Jul, §53) that don't transfer between months, and
+  applies them to rows with no ADS-B. Restricting it to rows with ADS-B
+  information is the obvious refinement. Because it is motivated by
+  these results, it needs its own pre-registration and board A/B.
+- Best iterations 4,614 / 1,008. Top gain: `a_rel` (0.23–0.24), `L_rel`
+  (0.17), `s`, first-sighting distance, pushback distance.
+- **v3 vs v4 (reported):** the same combiner on v3 detections gives
+  pooled −2.49, so the v4 rows add ≈ −0.14.
+
+**v24 build** (`src/post/adsb_combiner.py`, log `logs/adsb_combiner_build.log`).
+- Fit on Jan+Jul 2025 (317,809 rows), best_iter 2,873.
+- Applied to 2026 with the production stack. LIRF keeps v23's value.
+- `data/submissions/smart-jigsaw_v24.parquet`: RMS 75.6 s from v23.
+  Per-airport RMS diff 36 s (LTFM) to 121 s (EHAM).
+- Keep iff the board < 269.50.
+
+**Board: v24 = 265.66 (v23 269.50, −3.84). ADOPTED; new best.**

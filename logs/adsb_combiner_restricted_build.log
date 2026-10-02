@@ -1,0 +1,19 @@
+stack weights: {'lgb': np.float64(0.4589), 'catcorr': np.float64(0.5551)}
+combiner fit on 317,809 holdout rows; best_iter 2873
+rows keeping v23: 143239
+shape: (10, 4)
+| ADEP_mvt | len   | mean_diff | rms_diff |
+| ---      | ---   | ---       | ---      |
+| str      | u32   | f64       | f64      |
+|----------|-------|-----------|----------|
+| EDDF     | 36317 | -12.1     | 55.6     |
+| EDDM     | 25966 | 14.0      | 89.5     |
+| EGLL     | 39840 | -24.1     | 99.4     |
+| EHAM     | 38182 | 5.8       | 121.1    |
+| LEBL     | 30080 | 4.0       | 73.6     |
+| LEMD     | 36954 | -23.4     | 72.9     |
+| LFPG     | 39872 | -1.9      | 20.3     |
+| LIRF     | 26899 | 0.0       | 0.0      |
+| LSZH     | 23150 | 4.8       | 81.9     |
+| LTFM     | 47581 | 0.0       | 2.1      |
+wrote smart-jigsaw_v25.parquet: RMS diff vs v23 72.4 s; median 961, mean 1038.7

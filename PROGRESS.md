@@ -3865,3 +3865,38 @@ needed.**
   ADS-B detector field (v4).
 - It replaces the four linear ADS-B stages, cross-fit Jan<->Jul.
 - Bar: trimmed rule vs v23's pipeline; board must beat 269.50.
+
+## 58. Learned ADS-B combiner -- gate PASS (-2.63 trimmed); v24 built, board pending (2026-10-02)
+
+Full results in `reports/adsb_combiner_preregistration.md`.
+- **Gate:** pooled trimmed -2.63 (Jan -3.82, Jul -1.94, all P 0.000),
+  full -2.08. About 4x v23's gain.
+- **Gains:** EHAM -16.6, LSZH -10.3, LEBL -9.3, EDDM -9.2, EDDF -6.7.
+- **The flaw:** rows with no ADS-B get worse (274.4 -> 276.4; LTFM +8.0,
+  LFPG +0.9). The combiner learns month-specific airport/hour biases from
+  `s`, hour and airport. The candidate follow-up is to apply it only to
+  rows with ADS-B information. That's post-hoc, so it needs its own
+  pre-registration.
+- **v24** = `data/submissions/smart-jigsaw_v24.parquet`
+  (`src/post/adsb_combiner.py`): RMS 75.6 s from v23. Keep iff the board
+  < 269.50.
+
+**Board (2026-10-02): v24 = 265.66, -3.84 vs v23. ADOPTED, new best.** The
+board gain is ~1.5x the holdout gain (-2.63).
+
+| version | what | score |
+|---|---|---|
+| v23 | v21 on v3 detections | 269.50 |
+| **v24** | learned ADS-B combiner (v4 detections) | **265.66** (best) |
+
+**v25 (restricted combiner) built, board-only A/B**
+(`reports/adsb_combiner_restricted_preregistration.md`).
+- v24's combiner applied only to rows with ADS-B information (matched or
+  a fallback tier). The other 143,239 ranking rows keep v23's value.
+- LTFM/LFPG changes vs v23 drop from 36/49 s RMS to 2/20 s. v25 vs v24:
+  113,703 rows differ, RMS 21.8 s.
+- The holdout can't decide this (the "no ADS-B" group was already seen),
+  so the board is the only test: keep iff < 265.66.
+- `src/post/adsb_combiner.py --restricted` ->
+  `data/submissions/smart-jigsaw_v25.parquet`. The rebuilt v24 (no flag)
+  is deterministic: same 75.6 s RMS vs v23.
