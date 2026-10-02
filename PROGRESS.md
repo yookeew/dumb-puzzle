@@ -3810,3 +3810,58 @@ track (LFPG 90%, but its tracks are too sparse to reach stands).
 
 Gate pre-registered in `reports/adsb_v3_preregistration.md` (trimmed
 RMSE decides); script `tests/adsb_v3_test.py`.
+
+**Gate (2026-10-02): PASS.** Pooled trimmed -0.62 (P 0.000), Jan -0.88,
+Jul -0.48, full -0.50. LSZH -6.4, EGLL -1.3, EDDF -1.2. Each part works
+alone (inferred stands -0.30, gated fallback -0.35). Ungated, the fallback
+gets w ~0.01: the 300 s gate carries it.
+
+**v23 built:** `data/submissions/smart-jigsaw_v23.parquet` =
+`src/post/stack_submit.py --cat-corrected --adsb-v3`. 89,591 rows differ
+from v21 (RMS 19.4 s). Board pending; keep iff < 270.2. (v22 was the
+rejected LIRF hedge, so `cat_ctr2`'s pre-registered "v23" build becomes the
+next free number.)
+
+**Board (2026-10-02): v23 = 269.50, -0.70 vs v21. ADOPTED, new best.** The
+board gain (-0.70) is about 1.1x the holdout gain (-0.62); earlier ADS-B
+stages ran 2-4x.
+
+| version | what | score |
+|---|---|---|
+| v21 | OOF-corrected CatBoost stack + ADS-B | 270.2 |
+| v22 | v21 + LIRF long-delay hedge | 270.86 (rejected) |
+| **v23** | v21 on v3 detections (inferred stands + gated fallback) | **269.50** (best) |
+
+## 57. Pseudo-label corrector killed; v4 matched-row fallback; learned ADS-B combiner pre-registered (2026-10-02)
+
+**Pseudo-label corrector (2026 ADS-B as labels): dead, no holdout gate
+needed.**
+- Label-free check: the pseudo-residual (ADS-B taxi - lag - stack) on
+  observed rows has stable stand structure across days in both years
+  (odd/even-day split R2 0.21).
+- On 2025, stand/operator means of the *pseudo*-residual make the *true*
+  residual worse, on both observed (183 -> 199) and unobserved
+  (290 -> 291) rows. The structure is ADS-B timing artefact, not model
+  error.
+- Even *true*-residual group means barely help (290 -> 290): the stack is
+  already calibrated by stand and operator.
+- Per-airport pseudo-residuals also shift between years (EGLL -177 ->
+  -100), but v18 showed that EGLL lag shift doesn't transfer.
+
+**v4 detector** (`src/link/adsb_pushback.py --v4` ->
+`cache/adsb_pushback_v4/`):
+- The fallback also serves matched rows with no appear/dwell tier, taking
+  only stand events before the matched run's first sample (the stand
+  visit sits in an earlier piece of the track).
+- Non-holdout days: 656 new rows; 177 pass the 300 s gate (58% within
+  ±120 s, none off by > 600 s); gated LS w 0.34 (155 -> 144). Alone, about
+  -0.15 s.
+- Not gated separately: it feeds the combiner below.
+
+**Learned ADS-B combiner** pre-registered in
+`reports/adsb_combiner_preregistration.md`, script
+`tests/adsb_combiner_test.py`.
+- One LightGBM on (taxi - stack), from the stack prediction and every
+  ADS-B detector field (v4).
+- It replaces the four linear ADS-B stages, cross-fit Jan<->Jul.
+- Bar: trimmed rule vs v23's pipeline; board must beat 269.50.

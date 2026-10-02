@@ -40,7 +40,9 @@ Run:  .venv/Scripts/python.exe src/link/adsb_pushback.py [--v3] [YYYY-MM-DD ...]
 --v3 adds the inferred stands (src/ingest/stand_infer.py) and the fallback
 match for unmatched departures (tiers fb_dwell / fb_appear, flag
 adsb_fallback), writing to cache/adsb_pushback_v3/ (PROGRESS.md §56). The
-default output is unchanged.
+default output is unchanged. --v4 (§57) also lets matched rows without an
+appear/dwell tier take a fallback event that precedes their run, writing to
+cache/adsb_pushback_v4/.
 """
 
 from __future__ import annotations
@@ -64,6 +66,7 @@ RAW = ROOT / "data" / "raw"
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 OUT = ROOT / "cache" / "adsb_pushback"
 OUT_V3 = ROOT / "cache" / "adsb_pushback_v3"   # --v3: inferred stands + fallback (§56)
+OUT_V4 = ROOT / "cache" / "adsb_pushback_v4"   # --v4: v3 + fallback for matched, untiered rows (§57)
 
 SURFACE_GS = 40.0
 STATIONARY_GS = 1.0
@@ -131,7 +134,8 @@ def departures(day: dt.date) -> pl.DataFrame:
                           mvt_ts=pl.col("MVT_TIME_UTC_mvt").dt.epoch("ms") / 1000.0))
 
 
-def detect_day(day: dt.date, pos: pl.DataFrame, fallback: bool = False) -> pl.DataFrame:
+def detect_day(day: dt.date, pos: pl.DataFrame, fallback: bool = False,
+               fb_matched: bool = False) -> pl.DataFrame:
     adsb = load_day(day)
     mv = attach_stand_coords(departures(day), pos)
     cov = dict(adsb.filter(pl.col("gs") < SURFACE_GS).group_by("airport")
@@ -197,7 +201,7 @@ def detect_day(day: dt.date, pos: pl.DataFrame, fallback: bool = False) -> pl.Da
             for row in res.values():
                 row["adsb_fallback"] = False
             if sub.height and ap_pos.height:
-                _fallback(recs, res, sub, lat0)
+                _fallback(recs, res, sub, lat0, fb_matched)
         out.extend(res.values())
     return pl.DataFrame(out, schema=SCHEMA_V3 if fallback else SCHEMA)
 
@@ -267,7 +271,9 @@ def _events(sub: pl.DataFrame, sxy: np.ndarray, lat0: float, t: float) -> list[t
     return evs
 
 
-def _fallback(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float) -> None:
+def _fallback(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float, fb_matched: bool = False) -> None:
+    """fb_matched (v4): also serve matched rows without an appear/dwell tier, taking only events
+    before the matched run's first sample (the stand visit sits in an earlier run of the track)."""
     by_stand: dict = {}
     for r in recs:
         if r["stand_lat"] is not None:
@@ -282,9 +288,11 @@ def _fallback(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float) -> No
         for r in rs:
             row = res[r["MVT_ID_mvt"]]
             t = r["mvt_ts"]
-            if not row["adsb_matched"]:
+            open_ = not row["adsb_matched"] or (fb_matched and row["adsb_tier"] not in ("appear", "dwell"))
+            if open_:
+                first = row["adsb_first_ts"] if row["adsb_matched"] else np.inf
                 evs = [e for e in _events(sub, sxy, lat0, t)
-                       if (e[2], e[0]) not in used
+                       if (e[2], e[0]) not in used and e[0] < first
                        and e[0] > prev_t - FB_PREV_SLACK_S
                        and all(abs(e[0] - k) > FB_EVENT_TOL_S for k in known)]
                 if evs:
@@ -296,17 +304,18 @@ def _fallback(recs: list[dict], res: dict, sub: pl.DataFrame, lat0: float) -> No
             prev_t = t
 
 
-def main(days: list[dt.date] | None = None, v3: bool = False) -> None:
+def main(days: list[dt.date] | None = None, v3: bool = False, v4: bool = False) -> None:
+    v3 = v3 or v4
     pos = stand_positions(load_stands())
     out_dir = OUT
     if v3:
         from src.ingest.stand_infer import load_inferred
         inf = load_inferred().join(pos.select("airport", "key"), on=["airport", "key"], how="anti")
         pos = pl.concat([pos, inf])
-        out_dir = OUT_V3
+        out_dir = OUT_V4 if v4 else OUT_V3
     out_dir.mkdir(parents=True, exist_ok=True)
     for day in days or available_days():
-        df = detect_day(day, pos, fallback=v3)
+        df = detect_day(day, pos, fallback=v3, fb_matched=v4)
         df.write_parquet(out_dir / f"day={day.isoformat()}.parquet")
         n_tier = df.filter(pl.col("adsb_tier").is_in(["appear", "dwell"])).height
         print(f"{day}: {df.height:,} DEP, matched {df['adsb_matched'].sum():,}, "
@@ -319,4 +328,4 @@ def load_all() -> pl.DataFrame:
 
 if __name__ == "__main__":
     days = [dt.date.fromisoformat(a) for a in sys.argv[1:] if not a.startswith("--")]
-    main(days or None, v3="--v3" in sys.argv)
+    main(days or None, v3="--v3" in sys.argv, v4="--v4" in sys.argv)

@@ -95,3 +95,37 @@ detections plus the fallback stage, parameters fit on Jan+Jul together.
 ## Amendments
 
 (none)
+
+## Results (2026-10-02, `tests/adsb_v3_test.py`, log `logs/adsb_v3_test.log`; run after commit 81ff1a0)
+
+**Primary: ADOPT.**
+
+| trimmed RMSE | base (v21) | v3 | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 292.24 | 291.76 | −0.48 | [−0.64, −0.36] | 0.000 |
+| B: Jan (fit Jul) | 222.22 | 221.34 | −0.88 | [−1.09, −0.68] | 0.000 |
+| pooled | 263.30 | 262.68 | −0.62 | [−0.75, −0.51] | 0.000 |
+| guard: pooled full | 327.52 | 327.02 | −0.50 | [−0.66, −0.38] | 0.000 |
+
+- **Per airport (trimmed):** LSZH −6.44, EGLL −1.26, EDDF −1.18,
+  LEMD −0.76, LEBL −0.23, EDDM −0.08, EHAM +0.02. LFPG, LIRF and LTFM
+  are unchanged.
+- **Fallback weights:** fb_dwell 0.36 / 0.47, fb_appear 0.76 / 0.79 (fit
+  Jan / Jul). About 4,150 gated rows applied per month.
+- **The parts, reported:**
+  - inferred stands only: −0.30 (P 0.000);
+  - fallback only, gated: −0.35 (P 0.000);
+  - fallback ungated: weights ≈ 0.01, total −0.31, the same as inferred
+    stands alone. The gate carries all of the fallback's value.
+
+**Build** (`src/post/stack_submit.py --cat-corrected --adsb-v3`).
+- The default path still reproduces the uploaded v21 byte for byte
+  (checked before the change).
+- Fallback weights fit on Jan+Jul: fb_dwell 0.41, fb_appear 0.77.
+- 2026: 96,877 blended rows, plus 5,730 gated fallback rows (EGLL 1,870,
+  LEMD 1,718, LSZH 830, EDDF 646, LEBL 513).
+- `data/submissions/smart-jigsaw_v23.parquet`: 89,591 rows differ from
+  v21, RMS 19.4 s.
+- Board A/B pending: keep iff < 270.2.
+
+**Board: v23 = 269.50 (v21 270.2, −0.70). ADOPTED; new best.**

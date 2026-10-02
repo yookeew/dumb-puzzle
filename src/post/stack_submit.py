@@ -18,7 +18,11 @@ They are applied to each engine's all-2025 refit submission
 ADS-B part, to 2026 ranking rows with a recovered pushback
 (cache/adsb_pushback/day=2026-*.parquet).
 
-Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...] [--cat-corrected]
+Run:  .venv/Scripts/python.exe src/post/stack_submit.py [--lag-shift AIRPORT=SECONDS ...] [--cat-corrected] [--adsb-v3]
+
+--adsb-v3 reads the v3 detections (cache/adsb_pushback_v3/: inferred stands +
+fallback match) and adds the gated fallback blend after the partial stage
+(reports/adsb_v3_preregistration.md, PROGRESS.md §56); files get a "_v3" suffix.
 
 --lag-shift adds SECONDS to that airport's ADS-B lag for the 2026 ranking rows
 only (a leaderboard probe of the year-over-year drift, tests/adsb_drift_test.py);
@@ -39,19 +43,20 @@ from scipy.optimize import nnls
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from post import adsb_blend, adsb_partial  # noqa: E402
+from post import adsb_blend, adsb_fallback, adsb_partial  # noqa: E402
 
 EVAL = ROOT / "cache" / "eval"
 SUB = ROOT / "data" / "submissions"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 RAW = ROOT / "data" / "raw"
-DET = ROOT / "cache" / "adsb_pushback"
+ADSB_V3 = "--adsb-v3" in sys.argv
+DET = ROOT / "cache" / ("adsb_pushback_v3" if ADSB_V3 else "adsb_pushback")
 # --cat-corrected: CatBoost replaced by the OOF-corrected CatBoost (src/post/corrector_v2.py,
 # reports/oof_corrector_v2_preregistration.md); outputs are named stack_lgb_catcorr_*.
 CAT_CORRECTED = "--cat-corrected" in sys.argv
 ENGINES = ["lgb", "catcorr" if CAT_CORRECTED else "cat"]
-PRE = "stack_lgb_catcorr" if CAT_CORRECTED else "stack_lgb_cat"
+PRE = ("stack_lgb_catcorr" if CAT_CORRECTED else "stack_lgb_cat") + ("_v3" if ADSB_V3 else "")
 CEIL, LIRF_CEIL = 10800, 140000   # models.fit CEIL / LIRF_RAW_CEIL
 
 
@@ -135,6 +140,10 @@ def main() -> None:
     pp = adsb_partial.fit(ho)
     hoq = adsb_partial.with_inputs(ho.with_columns(base=adsb_blend.apply(ho, p, q)))
     ppq = adsb_partial.fit(hoq)
+    if ADSB_V3:
+        hof = hoq.with_columns(base=pl.Series(adsb_partial.apply(hoq, ppq)))
+        pf = adsb_fallback.fit(hof, p)
+        print("fallback blend:", pf)
     print("partial: b", round(pp["b"]), "s/km | w", {k: round(v, 3) for k, v in pp["w"].items()},
           "| a", {a: round(v) for a, v in sorted(pp["a"].items())}, "| a_pooled", round(pp["a_pooled"]))
     print("ADS-B blend: tier w", {k: round(v, 3) for k, v in p["w"].items()},
@@ -191,6 +200,16 @@ def main() -> None:
           f"{(e['blendq'] - e['blend']).abs().mean():.1f}s; quality mix "
           f"{dict(e.group_by(adsb_blend.quality().alias('q')).len().iter_rows())}")
     _write(rk, f"{PRE}_adsbq_partial{sfx}")
+
+    # ---- ranking: + gated fallback blend (v3, §56)
+    if ADSB_V3:
+        rk = rk.with_columns(base=pl.col("partialq"))
+        rk = rk.with_columns(fb=pl.Series(adsb_fallback.apply(rk, p, pf))).with_columns(final=_clip(rk, "fb"))
+        fm = rk.filter(adsb_fallback.mask(p))
+        print(f"fallback rows: {fm.height:,} ({fm.height / rk.height * 100:.1f}%); mean |shift| "
+              f"{(fm['fb'] - fm['partialq']).abs().mean():.1f}s; per airport "
+              f"{dict(fm.group_by('ADEP_mvt').len().sort('ADEP_mvt').iter_rows())}")
+        _write(rk, f"{PRE}_adsbq_partial_fb{sfx}")
 
 
 if __name__ == "__main__":
