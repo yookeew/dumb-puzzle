@@ -4211,3 +4211,74 @@ on it.
     WMT7TL = arrival WMTMT4BS's landing; LFPG 19:30:00 is a round time).
   - **Conclusion:** the six monsters are heterogeneous recording errors,
     not one physical mechanism. Nothing to build.
+
+## 69. History encodings (stand × runway × hour, operator × stand) -- killed at the stage A screen (2026-10-03)
+
+Pre-registered in `reports/history_encodings_preregistration.md`
+(01a09ff). Script `tests/history_enc_screen.py`.
+- **Screen:** shrunk group means of the OOF stack residual, fitted on
+  even months and applied to odd (and the reverse).
+- **Result:** every group makes the residual worse: +0.1% to +0.3% each,
+  +0.6% to +0.9% all four together. LIRF, LTFM and LFPG are all worse.
+- **Like §60 (flight number, callsign), but for interactions:** the stack
+  already holds all the cross-month-stable information at the identity
+  and interaction level. What's left is row- and day-level variation that
+  doesn't repeat.
+- **Follow-up: stand-specific ADS-B -> label lag -- real, but the combiner
+  already absorbs it.** Scoping on the 2025 OOF months only, no holdout.
+  - **The raw signal:** on observed (appear/dwell) non-LIRF rows, the lag
+    (label - ADS-B taxi) has stable per-stand structure. Per-stand means
+    fitted on even months cut its RMS by 14.1% on odd months, and by
+    12.5% the other way (operator -4.9%, aircraft type -4.9%).
+  - **The combiner residual:** cross-fit the combiner across OOF months
+    (best_iter 933 / 1,283), then screen its residual by group.
+    - Observed rows (RMS 87.8 / 93.8): stand -0.9% / -0.7%; operator,
+      type and op × stand ≤ 0.5%.
+    - All rows with ADS-B information: ±0.1%.
+  - The combiner gets the stand effect from its geometry inputs (pushback
+    distance, speed, first-sighting distance). Worth ~0.1 board points.
+    Not pursued.
+
+## 70. Errors are shared in time -- the neighbour-state lever (scoping, OOF months only) (2026-10-03)
+
+Scratch scoping, no holdout. Pre-registered next:
+`reports/neighbour_state_preregistration.md`.
+
+**First, dead ends from the same push:**
+- **Feature skew audit (2025 holdout vs 2026 ranking):** only weather
+  shifts beyond 0.3 sd. One real but small shift: NM AOBT_3 vs ADS-B
+  pushback, median 86 -> 19 s at LSZH in July, ~30 s at EDDM/LEBL. Parked.
+- **LIRF error** is almost all echo-or-not on delayed flights. Neither of
+  these marks an echo:
+  - timestamp precision: block times at 7 airports are minute values
+    with ±10 s jitter, so there's no hidden class;
+  - NM AOBT_3 equal to SOBT: 2 rows in 59,604.
+
+**Oracle: residuals are shared in time.**
+- The OOF stack residual (labels ≤ 90 min) correlates with the mean true
+  residual of other departures at the same airport within ±15 / 30 / 60
+  min:
+  - EDDF 0.34, EDDM 0.34, EGLL 0.30, EHAM 0.22, LEBL 0.40, LEMD 0.31,
+    LFPG 0.30, LIRF 0.14, LSZH 0.33, LTFM 0.44;
+  - same runway is higher: LTFM 0.48, EDDF 0.37, LSZH 0.38, LFPG 0.35;
+  - departures in the previous 15 min only: 0.15-0.37.
+
+**Label-free proxies:**
+- **Neighbours' NM pseudo-residual** (T - AOBT_3 - s): |0.05-0.17|, mostly
+  negative. Likely NM off-blocks running early or late for a stretch,
+  which the model over-trusts for each flight.
+- **Neighbours' ADS-B pseudo-residual** (observed neighbours), on rows
+  without their own observed pushback, over the 115 OOF ADS-B days:
+  EDDF 0.16, EDDM 0.21, EGLL 0.16, EHAM 0.13, LEBL 0.27, LEMD 0.20,
+  LSZH 0.19, LIRF 0.06 (oracle 0.14-0.39).
+  - **This reverses §56**, whose 2-day sample was too small.
+
+**Cross-fit screens** (LightGBM on r, even <-> odd months, beyond a
+control model):
+- NM, offset and arrival-taxi-in neighbours on all 10 months: -1.4% /
+  -1.5% residual RMS. LTFM 312 -> 293 in the odd direction.
+- NM + ADS-B neighbours on the ADS-B days: all rows 212.4 -> 210.1 and
+  234.5 -> 231.8; rows without their own observed pushback -1.2% / -1.3%.
+
+**Expected size:** ~1-1.5% RMSE (2-4 board points). The oracle says much
+more shared state exists than these proxies capture.

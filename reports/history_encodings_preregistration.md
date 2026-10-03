@@ -106,3 +106,24 @@ CatBoost isn't changed here; cat_ctr2 stays separate, pending the L4.
 ## Amendments
 
 (none)
+
+## Results (2026-10-03, stage A, `tests/history_enc_screen.py`, log `logs/history_enc_screen.log`; run after commit 01a09ff)
+
+**Stage A: FAIL -> stop.** No stage B or C.
+- **Data:** 1,740,568 OOF rows (labels ≤ 5 h) over the 10 training
+  months. OOF NNLS weights 0.387 / 0.612.
+
+| shrunk group means | even -> odd | odd -> even |
+|---|---|---|
+| sr (stand × runway) | +0.18% | +0.11% |
+| srh (stand × runway × 3 h) | +0.33% | +0.23% |
+| os (operator × stand) | +0.28% | +0.21% |
+| rh (runway × hour) | +0.22% | +0.09% |
+| all four | **+0.88%** | **+0.59%** |
+
+- Residual RMS in both directions: 216.01 -> 217.92 (even -> odd) and
+  239.53 -> 240.94 (odd -> even).
+- LIRF, LTFM and LFPG are each worse in both directions.
+- **There is no group structure left in the residual at any of these
+  interaction levels.** What's left is noise that doesn't repeat across
+  months.
