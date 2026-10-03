@@ -62,3 +62,39 @@ the holdout.
 ## Amendments
 
 (none)
+
+## Results (2026-10-03, `tests/neighbour_state_v2_test.py`, log `logs/neighbour_state_v2_test.log`; run after the pre-registration commit)
+
+**Primary: ADOPT.**
+- **Fits:** best_iter 696 / 1,059. Applied to 100,895 (Jul) / 83,993
+  (Jan) holdout rows.
+- **Correction RMS:** Jul 76.9 raw -> 74.3 demeaned; Jan 64.8 -> 60.0.
+
+| trimmed RMSE | base (v27 method) | v2 | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 286.82 | 282.72 | −4.10 | [−6.88, −1.90] | 0.000 |
+| B: Jan (fit Jul) | 214.90 | 212.66 | −2.24 | [−3.95, −0.59] | 0.003 |
+| pooled | 257.22 | 253.85 | −3.37 | [−5.24, −1.88] | 0.000 |
+| guard: pooled full | 322.65 | 320.72 | −1.93 | [−3.94, −0.28] | 0.010 |
+
+- **Per airport (trimmed):** LTFM −10.74, EGLL −5.82, LIRF −3.68, LEMD
+  −2.95, EDDM −1.44, LSZH −1.38, LEBL −1.14, EDDF −0.83, LFPG −0.75, EHAM
+  +0.04.
+- **Reported:** (b) only, not demeaned: pooled −4.08, Jan −3.71, Jul
+  −4.37, full −2.44.
+- **Caveat recorded before the board:**
+  - Airport-day levels are only 12% of v29's 2026 change energy (airport
+    levels 2%), so level drift explains at most part of v29's ~2×
+    overshoot.
+  - The within-day part of v29 had an implied optimal scale of ~0.55-0.69.
+  - Expected v30 board vs v27: roughly −0.7 to −2.7, *assuming* part (b)
+    aligns with 2026 as well as v29's changes did on average.
+  - The holdout keeps overstating this family by ~2×. The most likely
+    remaining cause is that the corrector is trained against 10-month and
+    OOF base predictions but applied to the 12-month production stack.
+
+**Board: v30 = 261.40 (v27 262.13, −0.73). ADOPTED; new best.**
+- From the two scores: Σc² = 1.28e9, ΔSSE = −1.31e8, so Σc·r = 7.0e8. The
+  SSE-optimal scale is ~0.55 (≈ 260.0 at that scale).
+- So v30 is still ~2× too strong. The overshoot is in the within-day
+  signal, not the airport-day level.

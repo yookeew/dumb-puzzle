@@ -4325,3 +4325,34 @@ amendment before results (the clip). Script `tests/neighbour_state_test.py`.
   - It can't shift an airport's level.
   - (Day-anomaly input features alone kept −1.6% / −2.3% but didn't fix
     the level behaviour.)
+
+## 72. Neighbour state v2 (within-day, part (b) only) -- gate PASS (-3.37); v30 built (2026-10-03)
+
+Pre-registered in `reports/neighbour_state_v2_preregistration.md`; full
+results there.
+- **Holdout (trimmed):** Jul −4.10, Jan −2.24, pooled −3.37 (P 0.000),
+  full −1.93. Every airport ≤ 0 except EHAM +0.04; LTFM −10.7, EGLL −5.8.
+- **Correction to §71's diagnosis:** airport-day levels are only 12% of
+  v29's 2026 change energy, so level drift is at most part of the 2×
+  overshoot. The likelier main cause is that the corrector is trained
+  against 10-month and OOF base predictions but applied to the 12-month
+  production stack.
+- **Expected board vs v27:** −0.7 to −2.7.
+- **v30** (`src/post/neighbour_state.py --v2`, log
+  `logs/neighbour_state_v2_build.log`):
+  - 135,714 rows without ADS-B information are changed (zero mean per
+    airport-day by construction); the 209,127 rows with it keep v27.
+  - RMS 60.8 s from v27 (LTFM 117, LIRF 140, LSZH 96, others 45-67).
+  - Keep iff the board < 262.13.
+
+**Board: v30 = 261.40 (−0.73 vs v27). ADOPTED; new best.**
+- Implied optimal scale ~0.55 (≈ 260.0), so the within-day signal also
+  transfers at about half strength.
+- **Hypothesis:** the holdout gate trains on OOF days from months adjacent
+  to Jan/Jul (Feb, Jun, Aug, Dec), so it measures adjacent-month
+  transfer, not year-ahead. The physical ADS-B combiner transferred ~1:1
+  (§64-65). Statistical neighbour relationships seem to decay by ~half
+  over a year.
+- **Next:** a forward-in-time test (train on early 2025, score on late
+  2025, and the reverse) to measure the decay and set the strength from
+  data, not from the board.
