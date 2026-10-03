@@ -4070,3 +4070,144 @@ the holdout gain).
 
 **Board (2026-10-03): v27 = 262.13, -0.57 vs v26. ADOPTED, new best** (~1.2x
 the holdout gain).
+
+## 66. Rome finally gets ADS-B: LIRF-specific combiner -- gate PASS; v28 built (2026-10-03)
+
+**Scoping on the 2025 OOF months** (`tests/` scratch; no holdout):
+- On appear/dwell rows, after LIRF's lag, the label agrees with ADS-B
+  within ±120 s for 45% (other airports 53-88%); 8% are off > 600 s
+  (others ~1%); 16% echo.
+- My first read ("57-72% neither") skipped the lag correction and
+  included fallback rows. Corrected.
+- Two label hypotheses were rejected: the last restart after a stop is
+  ~1,000 s shorter than the label; labels aren't assigned or rounded
+  values.
+
+**Gate** (`reports/lirf_adsb_combiner_preregistration.md`):
+- A LIRF-only LightGBM on the stack, the ADS-B fields, offset, NM
+  unmatched, and the same-day operator arrival echo rate (§63).
+- Trained on May-Dec 2025 OOF LIRF rows (15.9k), scored on the Jul 2025
+  holdout.
+- Jul trimmed -0.99 (P 0.003), full -0.96. LIRF rows 661.6 -> 654.3;
+  every delay band improves.
+
+**v28** = `src/post/lirf_combiner.py`: v27 with 7,525 LIRF ranking rows
+(Jan 2026) replaced. Keep iff the board < 262.13.
+
+**Board: v28 = 262.36 (v27 262.13, +0.23). REJECTED; v27 stays.**
+- From the two scores (no row-level reading): the 7,525 changes correlate
+  with the true 2026 residual, but weakly. The SSE-optimal scale of the
+  change vector is ~0.23, i.e. Jan 2026 LIRF ADS-B carries little usable
+  signal.
+- **Lesson (fourth LIRF board miss, after v20, §42 and v22):** the gate
+  validated on Jul 2025, but 99% of the deployed rows were Jan 2026; Jan
+  2025 LIRF has no ADS-B, so the January case was never tested. For LIRF,
+  the 2025 holdout doesn't predict the board.
+
+## 67. Stepping back: quick structural checks before choosing the last week's work (2026-10-03)
+
+Scratch scripts, no holdout reads, no training.
+- **No other planned time is echoed.** Share of 2025 DEP labels with
+  block within 30 s of LOBT / EOBT_1 / IOBT is 3.5-7.5% at every airport
+  except LIRF (~18%, the known SOBT echo). NM AOBT_3 is within 120 s of
+  the block for only 17% (LTFM) to 49% (LEMD); median offsets range from
+  -118 s (LIRF) to +296 s (LTFM).
+- **The 2026 ADS-B downloads are complete:** all 62 Jan/Jul 2026 days are
+  `ok`, with no bad members or thin days.
+- **Observed pushback (appear/dwell) share, 2026 Jan/Jul:** EDDM 79/74%,
+  EHAM 72/76%, EGLL 22/75%, LEBL 35/44%, LSZH 43/28%, LEMD 27/12%,
+  LIRF 14/0%, EDDF 6/4%, LFPG and LTFM 0%.
+  - EDDF is matched 50-63% but its matched-untiered tracks have a median
+    of 9 points, first seen 1.9 km from the stand at 15 kt. That's
+    receiver coverage of the apron, not a detector gap. Nothing to
+    recover.
+- **Inbound-arrival echo as a LIRF echo signal: real but already
+  priced.**
+  - For LIRF departures ≥ 30 min late, the departure is an echo 29% of
+    the time if its own inbound arrival (Stage 1 link) is an echo, and 7%
+    otherwise. Stable in all 12 months; recall 23%.
+  - But the OOF `echo_prob` is already calibrated on it (0.26 vs actual
+    0.30; 0.064 vs 0.064), since `inbound_arr_delay` = 0 encodes it. Dead.
+- **High-delay 2026 rows look sane:** the biggest NM-matched offsets (up
+  to 48 h) are predicted as normal taxis, and the one 31 h NM-unmatched
+  LIRF row as an echo. With a board SSE of 2.4e10, any of these being
+  badly wrong would show.
+- **No visible 2025 -> 2026 drift in LIRF echo recording on the arrival
+  side** (arrivals are fully labelled in 2026). LIRF arrival echo is 8.6%
+  in Jan 2026 vs 8.7% in Jan 2025, and 10.6% in Jul 2026 vs 8.9% in Jul
+  2025. Other airports sit at 2-3%. So "LIRF rules don't transfer" is
+  more likely small effects drowned in label noise than a changed
+  recording process.
+
+## 68. Untrimmed error decomposition of v27's method -- the tail is 36%, but 28 of those points are two unpredictable rows (2026-10-03)
+
+`tests/tail_decomposition.py`, log `logs/tail_decomposition.log`. v27's
+method cross-fit on the Jan/Jul 2025 holdout, every row. No decision rides
+on it.
+
+- **Overall:** full 322.65, trimmed 257.22. Jan 342.34 / 214.90, Jul
+  305.86 / 286.82.
+- **SSE share by label band:**
+
+  | label | rows | share |
+  |---|---|---|
+  | ≤ 30 min | 328,710 | 33.9% |
+  | 30-60 min | 14,648 | 14.1% |
+  | 1-2 h | 832 | 8.6% |
+  | 2-5 h | 118 | 7.0% |
+  | **> 5 h** | **31** | **36.5%** |
+
+- **What the > 5 h rows are:**
+  - **Two LFPG rows: 28.4%** (84,240 s and 58,206 s; predictions
+    ~1,080).
+  - Three LIRF "+24 h" rows: ~7%. Predicted 51-63k vs labels ~87k; the v20
+    hedge for them lost on the board.
+  - About 25 LIRF echo rows: < 1%. Predicted at 0.85-1.0 × offset, already
+    right.
+  - **No prediction is capped:** tail predictions run from 15k to 90k s.
+    Raising LABEL_HI or the corrector cap wouldn't touch these rows. The
+    echo path already serves them with the 140,000 s LIRF ceiling (§12).
+- **Concentration:** the top row is 19.3% of SSE, the top 5 35.6%, the top
+  31 42.1%. Without the top 31, RMSE is 245.
+- **NM-unmatched rows ≤ 5 h: 15.1%** of SSE from 5,293 rows. LIRF alone
+  is 10.2% (369 rows, bias +698); EGLL 1.9%; the rest ≤ 0.7% each. NM-matched
+  rows: 48.5%.
+- **Unexplained monsters, all of 2025** (label > 5 h with delay < 3 h): 6
+  rows (LFPG 2, LSZH 2, LIRF 2).
+  - All have no NM flight record. The block time sits the previous
+    evening or night, which looks like a pushback that was aborted or
+    delayed overnight with the original off-block kept.
+  - No label-free signature isolates them:
+    - "no FLIGHT_ID & delay < 3 h" = 21,076 rows (6 hits, ~1 in 3,500);
+    - adding "same flight departed with an NM record ≤ 36 h earlier"
+      gives 9,644 rows with 2 hits;
+    - "no FLIGHT_ID & no aircraft type" catches 2.
+  - At ~1 in 3,500, a squared-loss hedge is worth ~0.
+- **What it implies for 2026:**
+  - The 2025 rate (6 per ~2.1M departures) predicts ~1 such row in the
+    344,841-row ranking set.
+  - One 60-85k row predicted at ~1k is 3.6-7e9 SSE. The whole v27 ->
+    leader gap is 6.4e9.
+  - If 2026 holds one, our board without it would be ~230-235, and the
+    leader's 38-point lead would be mostly that row: unreachable from
+    the data, reachable by label probing.
+  - Unprovable, but consistent with the board (262 ≈ trimmed holdout 257,
+    with 2026's higher ADS-B coverage lowering ordinary error).
+- **Overnight-pushback ADS-B scan: killed at validation (0 of 4).** The
+  idea: find the departing aircraft from its takeoff and look back ~30 h
+  for an earlier stand departure. Four of the six 2025 monsters have
+  ADS-B on both days.
+  - **LFPG ×2 and LIRF 05-02:** the departing aircraft can't be found at
+    all (no takeoff run within ±240 s; LFPG/LIRF surface coverage).
+  - **LIRF WMT8PV (08-02), aircraft 9H-WNI found:**
+    - It taxied at 03:16, took off at 03:27, landed back at ~09:11 and
+      departed again at 10:42 (the recorded takeoff).
+    - The label's block, 03:46:01, matches none of its movements. It
+      equals ITY839's landing time to the second, plausibly a mis-keyed
+      record.
+    - The "T - first pushback" estimate would be off by ~1,700 s.
+  - **Monster block times aren't the Stage 1 inbound in-block** (U_sec
+    differs by 5k-88k s). Only one equals another movement's time (LIRF
+    WMT7TL = arrival WMTMT4BS's landing; LFPG 19:30:00 is a round time).
+  - **Conclusion:** the six monsters are heterogeneous recording errors,
+    not one physical mechanism. Nothing to build.

@@ -1,0 +1,18 @@
+thin-day rule: 115 days kept, 7 dropped
+shape: (7, 5)
+| day        | status   | bad_members | points | med        |
+| ---        | ---      | ---         | ---    | ---        |
+| str        | str      | i64         | i64    | f64        |
+|------------|----------|-------------|--------|------------|
+| 2025-08-10 | tolerant | 1           | 211018 | 1.572131e6 |
+| 2025-10-04 | ok       | 0           | 0      | 1672691.5  |
+| 2025-10-07 | tolerant | 1           | 206056 | 1672691.5  |
+| 2025-11-19 | tolerant | 1           | 142500 | 1.549465e6 |
+| 2025-11-22 | tolerant | 1           | 247284 | 1.549465e6 |
+| 2025-12-10 | tolerant | 1           | 671427 | 1586008.5  |
+| 2025-12-28 | tolerant | 1           | 251232 | 1586008.5  |
+OOF-month ADS-B rows: 660,242 on 115 days (['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']); OOF stack weights [0.564 0.445]
+LIRF combiner fit on 27,160 rows (OOF 15,883 + Jul 2025 11,277); best_iter 429
+LIRF ranking rows replaced: 7,525 (by month: {7: 49, 1: 7476})
+  mean shift vs v27 -21.3s, RMS 101.5s
+wrote smart-jigsaw_v28.parquet: 7,454 rows differ from v27, RMS over all rows 15.0s

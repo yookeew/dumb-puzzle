@@ -85,3 +85,36 @@ final arbiter.
 ## Amendments
 
 (none)
+
+## Results (2026-10-03, `tests/lirf_adsb_combiner_test.py`, log `logs/lirf_adsb_combiner_test.log`; run after commit 7421d67)
+
+**Primary: ADOPT.**
+- **Training:** 15,883 LIRF rows on 69 OOF-month days (May–Dec 2025);
+  best_iter 137.
+- **Top gains:** offset 0.18, L_rel 0.17, L 0.12, s 0.09,
+  inbound_echo_day 0.09.
+- **Applied to:** 11,294 Jul 2025 LIRF rows with ADS-B information.
+
+| Jul 2025 holdout | base (v27 method) | LIRF combiner | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| trimmed (decides) | 286.82 | 285.83 | −0.99 | [−1.76, −0.25] | 0.003 |
+| full (guard) | 305.86 | 304.90 | −0.96 | [−1.68, −0.27] | 0.003 |
+
+- **LIRF rows with ADS-B:** trimmed 661.6 → 654.3, full 714.4 → 707.4.
+- **By delay band (trimmed):**
+  - ≤ 30 min: 292.3 → 281.8;
+  - 30–60 min: 452.4 → 438.3;
+  - > 60 min: 1,231.4 → 1,226.4.
+
+**v28 build** (`src/post/lirf_combiner.py`, log `logs/lirf_combiner_build.log`).
+- Fit on the OOF rows plus 11,277 Jul 2025 LIRF rows (27,160 in all);
+  best_iter 429.
+- Replaces 7,525 LIRF ranking rows (Jan 2026 7,476, Jul 2026 49): mean
+  shift −21.3 s, RMS 101.5 s.
+- `data/submissions/smart-jigsaw_v28.parquet`: 15.0 s RMS from v27 over
+  all rows.
+- Keep iff the board < 262.13.
+
+**Board: v28 = 262.36 (v27 262.13, +0.23). REJECTED; v27 stays.** The
+gate tested Jul 2025, but 99% of the replaced rows are Jan 2026; Jan 2025
+LIRF has no ADS-B, so the deployed case was never validated.
