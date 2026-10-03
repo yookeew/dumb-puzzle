@@ -109,3 +109,45 @@ the holdout.
     10,800 s on echo-hedged rows outside LIRF.
   - A 10,800 cap would change those rows for reasons unrelated to
     neighbours and contaminate the comparison.
+
+## Results (2026-10-03, `tests/neighbour_state_test.py`, log `logs/neighbour_state_test.log`; run after the amendment commit)
+
+**Primary: ADOPT.**
+- **Training:** 660,242 OOF-month rows on 115 days, plus the other holdout
+  month.
+- **Best iterations:** (a) 1,037 / 951, (b) 696 / 1,059.
+- **Neighbour-feature gain share:** (a) 0.30 / 0.35, (b) 0.46 / 0.54. The
+  top neighbour inputs in (b) are `nbq_rwy_900` and `nbp_rwy_900`.
+
+| trimmed RMSE | base (v27 method) | neighbour state | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan) | 286.82 | 282.53 | −4.29 | [−7.23, −1.90] | 0.000 |
+| B: Jan (fit Jul) | 214.90 | 211.86 | −3.04 | [−5.23, −0.56] | 0.011 |
+| pooled | 257.22 | 253.44 | −3.78 | [−5.81, −2.07] | 0.000 |
+| guard: pooled full | 322.65 | 320.45 | −2.20 | [−4.33, −0.28] | 0.013 |
+
+- **Per airport (trimmed):** LTFM −11.94, EGLL −6.95, LIRF −4.81, LEMD
+  −4.79, LEBL −1.65, LFPG −1.18, LSZH −0.23, EDDF +0.43, EHAM +0.79,
+  EDDM +0.90.
+- **Reported, not decisive:**
+  - part (a) alone: pooled trimmed +0.29 (P(worse) 0.987), Jan +0.66,
+    Jul +0.08;
+  - part (b) alone: pooled trimmed −4.08 (P(worse) 0.000), Jul −4.37,
+    Jan −3.71, full −2.44.
+  - So the gain is all in (b). Adding neighbours to the ADS-B combiner
+    doesn't help. Per the rule, v29 is built as pre-registered, (a)+(b).
+    A (b)-only build would need its own pre-registration.
+
+**Board: v29 = 262.33 (v27 262.13, +0.20). REJECTED; v27 stays.**
+- From the two scores and the change vector c (no row-level reading):
+  - Σc² = 1.96e9 and ΔSSE = +3.7e7, so Σc·(y − v27) = 9.6e8;
+  - the SSE-optimal scale of c is ~0.49 (≈ 259.5 at that scale).
+- So the changes point the right way in 2026 but are about 2× too large.
+- **Diagnosis (label-free, holdout vs ranking features):** the neighbour
+  features carry the airport's period-level NM bias and delay level, and
+  those drift more between years than between Jan and Jul 2025.
+  - nbp at LTFM Jan: +262 -> +164; LFPG Jul: −87 -> +44; EDDM Jan: −133
+    -> −224.
+  - nboff at LTFM and EDDF in Jan: about +500 s.
+  - v29 shifted whole airports in 2026 (EGLL −21 s, LEMD (b) −21 s, LTFM
+    (b) +14 s), and the Jan↔Jul cross-fit couldn't see that risk.

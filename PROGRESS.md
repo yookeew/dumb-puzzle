@@ -4282,3 +4282,46 @@ control model):
 
 **Expected size:** ~1-1.5% RMSE (2-4 board points). The oracle says much
 more shared state exists than these proxies capture.
+
+## 71. Neighbour-state stage -- gate PASS (-3.78 trimmed); v29 built (2026-10-03)
+
+Pre-registered in `reports/neighbour_state_preregistration.md`, with one
+amendment before results (the clip). Script `tests/neighbour_state_test.py`.
+- **Treatment:**
+  - (a) the full-year combiner plus neighbour features, on rows with
+    ADS-B information;
+  - (b) a neighbour corrector on s, for every other row.
+- **Neighbour features** (28, label-free, ±15/30/60 min, by airport and by
+  runway): neighbours' NM pseudo-residual, neighbours' ADS-B
+  pseudo-residual and count, neighbours' delay, arrivals' taxi-in excess.
+- **Holdout (trimmed):** Jul −4.29, Jan −3.04, pooled −3.78 (P 0.000),
+  full −2.20.
+  - Per airport: LTFM −11.9, EGLL −7.0, LIRF −4.8, LEMD −4.8, LEBL −1.7,
+    LFPG −1.2; EDDF/EDDM/EHAM +0.4 to +0.9.
+- **The gain is all in (b):** −4.08 alone. (a) alone is +0.29. Built as
+  pre-registered (a)+(b); a (b)-only build would need its own
+  pre-registration.
+
+**v29** (`src/post/neighbour_state.py`, log `logs/neighbour_state_build.log`):
+- (a) fit on 927,045 rows, best_iter 694; (b) fit on 1,004,525 rows,
+  best_iter 1,134.
+- Ranking rows: (a) 201,602, (b) 135,714. The 7,525 LIRF rows with ADS-B
+  information keep v27.
+- RMS 75.3 s from v27. Largest moves: LIRF (b) 144 s, LTFM (b) 126 s.
+- `data/submissions/smart-jigsaw_v29.parquet`. Keep iff the board < 262.13.
+
+**Board: v29 = 262.33 (+0.20 vs v27). REJECTED.**
+- The change vector is right-signed but ~2× too large (optimal scale
+  0.49 from the two scores).
+- Cause: neighbour features carry period-level NM-bias and delay levels
+  that drift 2025 -> 2026 (LTFM Jan nbp +262 -> +164, LFPG Jul −87 ->
+  +44, Jan delays ~+500 s at LTFM/EDDF). v29 moved whole airports by
+  10-20 s.
+- **Fix screened** (OOF months, part-(b) model): subtract the airport-day
+  mean of the predicted correction, so the stage only redistributes
+  within a day.
+  - It keeps most of the gain: −1.94% / −2.15% vs −2.06% / −2.63%
+    unconstrained.
+  - It can't shift an airport's level.
+  - (Day-anomaly input features alone kept −1.6% / −2.3% but didn't fix
+    the level behaviour.)
