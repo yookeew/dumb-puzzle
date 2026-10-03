@@ -64,3 +64,37 @@ holdout months plus all the kept days. **Keep iff the board < 262.70
 ## Amendments
 
 (none)
+
+## Results (2026-10-03, `tests/adsb_combiner_fullyear_test.py`, log `logs/adsb_combiner_fullyear_test.log`; run after commit d866ed8)
+
+- **Data:** all 122 planned days arrived. The thin-day rule dropped 7: the
+  six Sep–Dec days from §64 plus 08-10 (tolerant read, 211k points). That
+  leaves 115 days and 660,242 labelled OOF-month rows (Sep–Dec alone:
+  253,302). OOF stack weights 0.56 / 0.45.
+- The base reproduces v26's holdout numbers exactly (Jul 287.22, Jan
+  215.54).
+
+**Primary: ADOPT.**
+
+| trimmed RMSE | base (v26 method) | full year | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan + OOF) | 287.22 | 286.82 | −0.40 | [−0.52, −0.28] | 0.000 |
+| B: Jan (fit Jul + OOF) | 215.54 | 214.90 | −0.63 | [−0.97, −0.37] | 0.000 |
+| pooled | 257.70 | 257.22 | −0.48 | [−0.63, −0.35] | 0.000 |
+| guard: pooled full | 323.04 | 322.65 | −0.38 | [−0.54, −0.27] | 0.000 |
+
+- **Per airport:** EHAM −2.66, EDDM −1.66, LSZH −1.66, LEBL −1.05,
+  EDDF −0.68, EGLL −0.25, LEMD −0.18, LFPG +0.05.
+- **Best iterations 4,024 / 2,191** (v26 method: 1,996 / 1,386).
+- **Diminishing returns:** Sep–Dec gave −1.22; the other six months add
+  −0.48.
+
+**v27 build** (`src/post/adsb_combiner.py --full`, log
+`logs/adsb_combiner_fullyear_build.log`).
+- Fit on both holdout months plus the 115 days (927,045 rows); best_iter
+  3,055.
+- `data/submissions/smart-jigsaw_v27.parquet`: 194,616 rows differ from
+  v26, RMS 15.8 s.
+- Keep iff the board < 262.70.
+
+**Board: v27 = 262.13 (v26 262.70, −0.57). ADOPTED; new best.**

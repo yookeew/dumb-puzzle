@@ -4056,3 +4056,17 @@ the holdout gain).
 | v24 | learned ADS-B combiner | 265.66 |
 | v25 | combiner restricted to ADS-B rows | 264.39 |
 | **v26** | combiner retrained with Sep-Dec 2025 ADS-B | **262.70** (best) |
+
+## 65. Combiner retrained with all of 2025 (Feb-Jun, Aug added) -- gate PASS (-0.48); v27 built (2026-10-03)
+
+`reports/adsb_combiner_fullyear_preregistration.md`.
+- **Data:** all 122 days pulled; the thin-day rule kept 115 (660k OOF-month
+  rows).
+- **Gate vs v26's method:** pooled trimmed -0.48 (P 0.000), Jan -0.63, Jul
+  -0.40, full -0.38. All airports better except LFPG (+0.05).
+- **Diminishing returns** vs Sep-Dec's -1.22.
+- **v27** = `src/post/adsb_combiner.py --full`: RMS 15.8 s from v26. Keep
+  iff the board < 262.70.
+
+**Board (2026-10-03): v27 = 262.13, -0.57 vs v26. ADOPTED, new best** (~1.2x
+the holdout gain).

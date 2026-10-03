@@ -20,6 +20,8 @@ Run:  .venv/Scripts/python.exe src/post/adsb_combiner.py [--restricted]
   --m12 (reports/adsb_combiner_12m_preregistration.md): v25's restricted combiner, trained on
   the holdout plus the other 2025 months' ADS-B days (OOF stack) (implies --restricted)
   -> data/submissions/smart-jigsaw_m12.parquet (rename to the next free version on upload)
+  --full (reports/adsb_combiner_fullyear_preregistration.md): as --m12 with Feb-Jun, Aug added
+  -> data/submissions/smart-jigsaw_v27.parquet
 """
 
 from __future__ import annotations
@@ -46,10 +48,11 @@ RANKING = ROOT / "data" / "ranking" / "ranking.parquet"
 TEMPLATE = ROOT / "data" / "ranking" / "submitting.parquet"
 V2 = "--v2" in sys.argv
 V5 = "--v5" in sys.argv
-M12 = "--m12" in sys.argv
+FULLYEAR = "--full" in sys.argv
+M12 = "--m12" in sys.argv or FULLYEAR
 RESTRICTED = "--restricted" in sys.argv or V2 or V5 or M12
 V23 = SUB / "smart-jigsaw_v23.parquet"
-V24 = SUB / ("smart-jigsaw_m12.parquet" if M12 else "smart-jigsaw_v26.parquet" if (V2 or V5) else "smart-jigsaw_v25.parquet" if RESTRICTED
+V24 = SUB / ("smart-jigsaw_v27.parquet" if FULLYEAR else "smart-jigsaw_m12.parquet" if M12 else "smart-jigsaw_v26.parquet" if (V2 or V5) else "smart-jigsaw_v25.parquet" if RESTRICTED
              else "smart-jigsaw_v24.parquet")
 ENG = ["lgb", "catcorr"]
 DET_DIR = ROOT / "cache" / ("adsb_pushback_v5" if V5 else "adsb_pushback_v4")
@@ -92,6 +95,9 @@ def main() -> None:
     inner = (ho["day"].dt.day() % 5 == 0).to_numpy()[fit]
     if M12:
         import adsb_combiner_12m_test as T12
+        if FULLYEAR:
+            import adsb_combiner_fullyear_test as TF
+            T12.MONTHS = TF.FULL
         ex = T12.oof_frame()
         ex_rows = ((ex["taxi"] <= C.TRIM) & (ex["ADEP_mvt"] != "LIRF")).to_numpy()
         X = np.vstack([X[fit], feats(ex, ex["s"].to_numpy(), airports)[ex_rows]])
