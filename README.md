@@ -77,10 +77,39 @@ Downloads every object in the `competition-data` bucket, routed into
 `submitting.parquet`). Both are gitignored — this step is per-machine, not
 committed. Safe to re-run: it skips files already present.
 
+## Reproducing our submission
+
+See [REPRODUCE.md](REPRODUCE.md). It rebuilds our best leaderboard entry
+(v25, RMSE 264.39) from the raw data, step by step.
+[PROGRESS.md](PROGRESS.md) is the full experiment log, and
+`reports/*_preregistration.md` holds the pre-registered tests behind every
+adopted change.
+
+## Licence
+
+The source code in this repository is licensed under the **GNU General
+Public License v3.0** (see [LICENSE](LICENSE)), as the challenge rules
+require. Data files are not covered by the code licence; each carries its
+own (below).
+
 ## Data attribution
 
-Contains data from [EUROCONTROL's Aviation Intelligence
-Unit](https://ansperformance.eu), used under its free-to-copy,
-attribution-required, non-commercial licence — see
-[external-data/LICENSE](external-data/LICENSE) for the full terms and
-[DATA_SOURCES.md](DATA_SOURCES.md) for per-dataset details.
+- **Challenge data:** PRC / OpenSky Network, under the challenge terms.
+  Not redistributed here.
+- **adsb.lol** ADS-B tracks: Open Database License (ODbL) v1.0, "Contains
+  data from adsb.lol contributors". Our derived `data/external/stands_inferred.csv`
+  is under the same licence. See [data/external/LICENSE](data/external/LICENSE).
+- **X-Plane Scenery Gateway** stand and runway positions
+  (`data/external/stands.csv`, `runways.csv`): GNU GPL v2, by Laminar
+  Research and scenery contributors. See
+  [data/external/LICENSE](data/external/LICENSE).
+- **METAR** observations: NOAA/NWS (public domain), retrieved via the Iowa
+  Environmental Mesonet, Iowa State University.
+- **EUROCONTROL Aviation Intelligence Unit** ATFM datasets: free to copy
+  with attribution, non-commercial use only. Fetched and tested but not
+  used by the final submission. See
+  [external-data/LICENSE](external-data/LICENSE).
+
+Per-dataset URLs, access dates and fetch scripts are in
+[DATA_SOURCES.md](DATA_SOURCES.md). No OpenSky Network trajectory data is
+used.

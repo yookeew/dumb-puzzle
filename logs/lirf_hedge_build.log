@@ -1,0 +1,21 @@
+shifts (fit on Jan+Jul):
+ shape: (4, 5)
+| band | nmu   | n_fit | mean_r | shift  |
+| ---  | ---   | ---   | ---    | ---    |
+| str  | bool  | u32   | f64    | f64    |
+|------|-------|-------|--------|--------|
+| 1-3h | false | 3537  | 85.5   | 84.3   |
+| 1-3h | true  | 292   | -843.1 | -719.9 |
+| 3-6h | false | 233   | 121.8  | 100.3  |
+| 3-6h | true  | 62    | -768.5 | -425.4 |
+changed rows: 4,142 of 344,841
+shape: (4, 4)
+| band | nmu   | n    | mean_shift |
+| ---  | ---   | ---  | ---        |
+| str  | bool  | u32  | f64        |
+|------|-------|------|------------|
+| 1-3h | false | 3607 | 84.0       |
+| 1-3h | true  | 274  | -719.1     |
+| 3-6h | false | 213  | 100.0      |
+| 3-6h | true  | 48   | -425.0     |
+wrote smart-jigsaw_v22.parquet: rows changed 4,142; RMS diff vs v21 22.72 s

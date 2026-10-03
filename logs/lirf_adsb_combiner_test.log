@@ -1,0 +1,40 @@
+thin-day rule: 115 days kept, 7 dropped
+shape: (7, 5)
+| day        | status   | bad_members | points | med        |
+| ---        | ---      | ---         | ---    | ---        |
+| str        | str      | i64         | i64    | f64        |
+|------------|----------|-------------|--------|------------|
+| 2025-08-10 | tolerant | 1           | 211018 | 1.572131e6 |
+| 2025-10-04 | ok       | 0           | 0      | 1672691.5  |
+| 2025-10-07 | tolerant | 1           | 206056 | 1672691.5  |
+| 2025-11-19 | tolerant | 1           | 142500 | 1.549465e6 |
+| 2025-11-22 | tolerant | 1           | 247284 | 1.549465e6 |
+| 2025-12-10 | tolerant | 1           | 671427 | 1586008.5  |
+| 2025-12-28 | tolerant | 1           | 251232 | 1586008.5  |
+OOF-month ADS-B rows: 660,242 on 115 days (['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']); OOF stack weights [0.564 0.445]
+thin-day rule: 115 days kept, 7 dropped
+shape: (7, 5)
+| day        | status   | bad_members | points | med        |
+| ---        | ---      | ---         | ---    | ---        |
+| str        | str      | i64         | i64    | f64        |
+|------------|----------|-------------|--------|------------|
+| 2025-08-10 | tolerant | 1           | 211018 | 1.572131e6 |
+| 2025-10-04 | ok       | 0           | 0      | 1672691.5  |
+| 2025-10-07 | tolerant | 1           | 206056 | 1672691.5  |
+| 2025-11-19 | tolerant | 1           | 142500 | 1.549465e6 |
+| 2025-11-22 | tolerant | 1           | 247284 | 1.549465e6 |
+| 2025-12-10 | tolerant | 1           | 671427 | 1586008.5  |
+| 2025-12-28 | tolerant | 1           | 251232 | 1586008.5  |
+OOF-month ADS-B rows: 660,242 on 115 days (['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']); OOF stack weights [0.564 0.445]
+LIRF training rows 15,883 on 69 days (['2025-05', '2025-06', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']); best_iter 137; top gain ['offset:0.18', 'L_rel:0.17', 'L:0.12', 's:0.09', 'inbound_echo_day:0.09', 'a_rel:0.06', 'adsb_first_own_m:0.05', 'adsb_takeoff_gap_s:0.05']
+Jul 2025 LIRF rows with ADS-B information: 11,294
+
+=== PRIMARY: LIRF ADS-B combiner, Jul 2025 holdout ===
+  Jul trimmed (decides)        base= 286.82  new= 285.83  delta= -0.99  CI[-1.76,-0.25]  P(worse)=0.003
+  Jul full (guard)             base= 305.86  new= 304.90  delta= -0.96  CI[-1.68,-0.27]  P(worse)=0.003
+PRIMARY DECISION: ADOPT -> build v28, board A/B
+  LIRF-with-ADS-B trimmed    n= 11277: base 661.6 -> new 654.3
+  LIRF-with-ADS-B full       n= 11294: base 714.4 -> new 707.4
+  delay band (-1000000000,  1800] n= 5098: base 292.3 -> new 281.8
+  delay band (  1800,  3600] n= 3712: base 452.4 -> new 438.3
+  delay band (  3600,1000000000] n= 2467: base 1231.4 -> new 1226.4

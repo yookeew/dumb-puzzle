@@ -1,0 +1,50 @@
+oof fold 2025-02: fit on 9 months, valid 2025-06, predict 143,732 rows
+holdout fit 1111s  best_iter=7996  loss=huber  target=flip
+holdout fit 1656s  best_iter=3729  loss=huber  target=direct
+echo clf fit 1803s  best_iter=332  base_rate=0.054
+oof fold 2025-02: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-02.parquet (143,732 rows, 1945s, best {'best_iter_flip': 7996, 'best_iter_direct': 3729} clf=332)
+oof fold 2025-03: fit on 9 months, valid 2025-06, predict 164,449 rows
+holdout fit 1102s  best_iter=8000  loss=huber  target=flip
+holdout fit 1610s  best_iter=2851  loss=huber  target=direct
+echo clf fit 1701s  best_iter=441  base_rate=0.054
+oof fold 2025-03: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-03.parquet (164,449 rows, 1892s, best {'best_iter_flip': 8000, 'best_iter_direct': 2851} clf=441)
+oof fold 2025-04: fit on 9 months, valid 2025-06, predict 175,288 rows
+holdout fit 6013s  best_iter=7997  loss=huber  target=flip
+holdout fit 6381s  best_iter=2414  loss=huber  target=direct
+echo clf fit 6449s  best_iter=371  base_rate=0.054
+oof fold 2025-04: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-04.parquet (175,288 rows, 6604s, best {'best_iter_flip': 7997, 'best_iter_direct': 2414} clf=371)
+oof fold 2025-05: fit on 9 months, valid 2025-06, predict 185,202 rows
+holdout fit 866s  best_iter=8000  loss=huber  target=flip
+holdout fit 1207s  best_iter=2520  loss=huber  target=direct
+echo clf fit 1290s  best_iter=373  base_rate=0.055
+oof fold 2025-05: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-05.parquet (185,202 rows, 3087s, best {'best_iter_flip': 8000, 'best_iter_direct': 2520} clf=373)
+oof fold 2025-06: fit on 9 months, valid 2025-05, predict 183,142 rows
+holdout fit 593s  best_iter=7997  loss=huber  target=flip
+holdout fit 804s  best_iter=2398  loss=huber  target=direct
+echo clf fit 859s  best_iter=366  base_rate=0.055
+oof fold 2025-06: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-06.parquet (183,142 rows, 980s, best {'best_iter_flip': 7997, 'best_iter_direct': 2398} clf=366)
+oof fold 2025-08: fit on 9 months, valid 2025-06, predict 191,182 rows
+holdout fit 633s  best_iter=8000  loss=huber  target=flip
+holdout fit 824s  best_iter=2050  loss=huber  target=direct
+echo clf fit 875s  best_iter=334  base_rate=0.055
+oof fold 2025-08: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-08.parquet (191,182 rows, 998s, best {'best_iter_flip': 8000, 'best_iter_direct': 2050} clf=334)
+oof fold 2025-09: fit on 9 months, valid 2025-06, predict 183,950 rows
+holdout fit 608s  best_iter=8000  loss=huber  target=flip
+holdout fit 800s  best_iter=2161  loss=huber  target=direct
+echo clf fit 857s  best_iter=403  base_rate=0.056
+oof fold 2025-09: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-09.parquet (183,950 rows, 978s, best {'best_iter_flip': 8000, 'best_iter_direct': 2161} clf=403)
+oof fold 2025-10: fit on 9 months, valid 2025-06, predict 185,674 rows
+holdout fit 625s  best_iter=8000  loss=huber  target=flip
+holdout fit 866s  best_iter=2830  loss=huber  target=direct
+echo clf fit 927s  best_iter=438  base_rate=0.055
+oof fold 2025-10: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-10.parquet (185,674 rows, 1057s, best {'best_iter_flip': 8000, 'best_iter_direct': 2830} clf=438)
+oof fold 2025-11: fit on 9 months, valid 2025-06, predict 162,332 rows
+holdout fit 617s  best_iter=8000  loss=huber  target=flip
+holdout fit 854s  best_iter=2848  loss=huber  target=direct
+echo clf fit 910s  best_iter=371  base_rate=0.054
+oof fold 2025-11: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-11.parquet (162,332 rows, 1021s, best {'best_iter_flip': 8000, 'best_iter_direct': 2848} clf=371)
+oof fold 2025-12: fit on 9 months, valid 2025-06, predict 165,677 rows
+holdout fit 623s  best_iter=7998  loss=huber  target=flip
+holdout fit 886s  best_iter=3117  loss=huber  target=direct
+echo clf fit 945s  best_iter=408  base_rate=0.055
+oof fold 2025-12: wrote C:\Users\yuqiw\prc2025\cache\oof\lgb_mixed\fold=2025-12.parquet (165,677 rows, 1062s, best {'best_iter_flip': 7998, 'best_iter_direct': 3117} clf=408)

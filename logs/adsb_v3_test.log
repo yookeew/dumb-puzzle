@@ -1,0 +1,63 @@
+holdout rows 344,339; v21 cross-fit trimmed RMSE 263.30
+shape: (2, 7)
+| ym      | null   | fb_dwell | fb_appear | dwell | pass | appear |
+| ---     | ---    | ---      | ---       | ---   | ---  | ---    |
+| str     | u32    | u32      | u32       | u32   | u32  | u32    |
+|---------|--------|----------|-----------|-------|------|--------|
+| 2025-01 | 115756 | 4827     | 3564      | 16448 | 788  | 12277  |
+| 2025-07 | 147100 | 5061     | 3264      | 21260 | 1573 | 12421  |
+
+fallback weights: {'fit 2025-01': {'w': {'fb_dwell': 0.364, 'fb_appear': 0.759}, 'n_fit': 4295, 'n_applied_other_month': 4141}, 'fit 2025-07': {'w': {'fb_dwell': 0.465, 'fb_appear': 0.789}, 'n_fit': 4202, 'n_applied_other_month': 4176}}
+
+=== PRIMARY: v3 (inferred stands + gated fallback) ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 292.24  new= 291.76  delta= -0.48  CI[-0.64,-0.36]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 222.22  new= 221.34  delta= -0.88  CI[-1.09,-0.68]  P(worse)=0.000
+  POOLED trimmed               base= 263.30  new= 262.68  delta= -0.62  CI[-0.75,-0.51]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.52  new= 327.02  delta= -0.50  CI[-0.66,-0.38]  P(worse)=0.000
+
+PRIMARY DECISION: ADOPT -> build, board A/B
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta |
+| ---      | ---    | ---    | ---     | ---   |
+| str      | f64    | f64    | u32     | f64   |
+|----------|--------|--------|---------|-------|
+| EDDF     | 183.23 | 182.05 | 16011   | -1.18 |
+| EDDM     | 148.79 | 148.71 | 12781   | -0.08 |
+| EGLL     | 283.93 | 282.68 | 5591    | -1.26 |
+| EHAM     | 175.03 | 175.05 | 35366   | 0.02  |
+| LEBL     | 209.92 | 209.70 | 16273   | -0.23 |
+| LEMD     | 178.74 | 177.98 | 1785    | -0.76 |
+| LFPG     | 268.15 | 268.15 | 89      | -0.00 |
+| LIRF     | 554.20 | 554.20 | 0       | 0.00  |
+| LSZH     | 197.35 | 190.91 | 15098   | -6.44 |
+| LTFM     | 265.42 | 265.42 | 0       | 0.00  |
+
+=== reported: inferred stands only ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 292.24  new= 291.97  delta= -0.27  CI[-0.40,-0.17]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 222.22  new= 221.87  delta= -0.35  CI[-0.50,-0.21]  P(worse)=0.000
+  POOLED trimmed               base= 263.30  new= 263.01  delta= -0.30  CI[-0.40,-0.21]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.52  new= 327.28  delta= -0.24  CI[-0.34,-0.16]  P(worse)=0.000
+
+fallback only (gated) weights: {'fit 2025-01': {'w': {'fb_dwell': 0.363, 'fb_appear': 0.758}, 'n_fit': 4292, 'n_applied_other_month': 4140}, 'fit 2025-07': {'w': {'fb_dwell': 0.464, 'fb_appear': 0.788}, 'n_fit': 4200, 'n_applied_other_month': 4173}}
+
+=== reported: fallback only (gated) ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 292.24  new= 292.00  delta= -0.24  CI[-0.32,-0.18]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 222.22  new= 221.68  delta= -0.54  CI[-0.68,-0.41]  P(worse)=0.000
+  POOLED trimmed               base= 263.30  new= 262.95  delta= -0.35  CI[-0.43,-0.29]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.52  new= 327.24  delta= -0.28  CI[-0.37,-0.21]  P(worse)=0.000
+
+v3, fallback UNgated weights: {'fit 2025-01': {'w': {'fb_dwell': 0.01, 'fb_appear': 0.009}, 'n_fit': 8391, 'n_applied_other_month': 7956}, 'fit 2025-07': {'w': {'fb_dwell': 0.007, 'fb_appear': 0.006}, 'n_fit': 7956, 'n_applied_other_month': 8391}}
+
+=== reported: v3, fallback UNgated ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 292.24  new= 291.95  delta= -0.29  CI[-0.42,-0.18]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 222.22  new= 221.87  delta= -0.34  CI[-0.50,-0.22]  P(worse)=0.000
+  POOLED trimmed               base= 263.30  new= 263.00  delta= -0.31  CI[-0.41,-0.22]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 327.52  new= 327.27  delta= -0.25  CI[-0.35,-0.17]  P(worse)=0.000

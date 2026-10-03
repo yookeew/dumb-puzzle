@@ -20,6 +20,7 @@ Inputs (see features/export_model_inputs.py):
 
 from __future__ import annotations
 
+import functools
 import os
 import sys
 import time
@@ -116,8 +117,8 @@ VALID_MONTH = "2025-06"
 CLF_ROUNDS = 5000
 CLF_ETA = 0.02
 CLF_EARLY_STOP = 150
-CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic", "cat": "Logloss"}
-CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss", "cat": "Logloss"}
+CLF_OBJECTIVE = {"lgb": "binary", "xgb": "binary:logistic", "cat": "Logloss", "cat_ctr2": "Logloss"}
+CLF_METRIC = {"lgb": "binary_logloss", "xgb": "logloss", "cat": "Logloss", "cat_ctr2": "Logloss"}
 
 
 # --------------------------------------------------------------------- engines
@@ -186,7 +187,7 @@ def _fit_xgb(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
 
 
 def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, seed=42,
-             objective="RMSE", alpha=None, metric="RMSE"):
+             objective="RMSE", alpha=None, metric="RMSE", ctr_complexity=1):
     """CatBoost: the decorrelated second family (ordered boosting, target-statistic
     encoding of the categoricals instead of LightGBM/XGBoost's partition splits).
     GPU when available (Colab T4), else CPU -- CPU on the full 2M-row frame is
@@ -205,8 +206,9 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     # max_ctr_complexity=1: no categorical feature combinations. With 14
     # categoricals (several with thousands of levels) the default combination
     # search made each GPU iteration ~0.5 s on the 1.7M-row fit (~70 min/fit).
+    # engine "cat_ctr2" allows pairs (reports/cat_ctr2_preregistration.md).
     params = dict(loss_function=loss, eval_metric=metric, learning_rate=eta, iterations=rounds,
-                  depth=8, border_count=127, max_ctr_complexity=1, random_seed=seed,
+                  depth=8, border_count=127, max_ctr_complexity=ctr_complexity, random_seed=seed,
                   allow_writing_files=False, verbose=500)
     dtrain = pool(X, y)
     fit_kw = {}
@@ -217,7 +219,7 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     m = None
     n_gpu = get_gpu_device_count()
     print(f"catboost: {'GPU' if n_gpu > 0 else 'CPU (no GPU visible)'}  "
-          f"loss={loss}  lr={eta}  rounds={rounds}", flush=True)
+          f"loss={loss}  lr={eta}  rounds={rounds}  max_ctr_complexity={ctr_complexity}", flush=True)
     if n_gpu > 0:
         try:
             m = cls(**params, task_type="GPU")
@@ -237,7 +239,8 @@ def _fit_cat(X, y, cats, *, eta=ETA, rounds=ROUNDS, es=EARLY_STOP, valid=None, s
     return m, predict, best
 
 
-ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb, "cat": _fit_cat}
+ENGINES = {"lgb": _fit_lgb, "xgb": _fit_xgb, "cat": _fit_cat,
+           "cat_ctr2": functools.partial(_fit_cat, ctr_complexity=2)}
 
 
 def _mem(stage: str) -> None:
@@ -495,8 +498,8 @@ def _write_report(ev: pl.DataFrame, name: str, engine: str, sub: dict | None = N
 # capped instead of growing with residual size, so a handful of huge-residual
 # rows (LIRF, the d9 tail) can no longer pull splits toward fitting them exactly.
 LOSS_OBJECTIVE = {
-    "l2": {"lgb": "regression", "xgb": "reg:squarederror", "cat": "RMSE"},
-    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror", "cat": "Huber"},
+    "l2": {"lgb": "regression", "xgb": "reg:squarederror", "cat": "RMSE", "cat_ctr2": "RMSE"},
+    "huber": {"lgb": "huber", "xgb": "reg:pseudohubererror", "cat": "Huber", "cat_ctr2": "Huber"},
 }
 # alpha=800 beat plain L2 on the gap-realistic holdout (303.1s vs 309.2s overall,
 # improved on 6/10 airports incl. LIRF, tail d9 667.7 vs 677.0s, no airport

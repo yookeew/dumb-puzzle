@@ -1,0 +1,116 @@
+OOF rows with both engines: 1,740,628; holdout rows: 344,339
+Arm B base weights (NNLS on OOF): lgb 0.462  cat 0.544
+
+lgbcorr20: training rows 1,740,069 (base base_pred <= 7200)
+  lgbcorr20: best_iter=4585 of cap 20000 full_rounds=5044  2025-06 residual RMSE 311.29 -> 309.25
+
+catcorr20: training rows 1,740,054 (base base_pred <= 7200)
+  catcorr20: best_iter=5378 of cap 20000 full_rounds=5916  2025-06 residual RMSE 240.47 -> 236.96
+
+joint20: training rows 1,740,054 (base base_B <= 7200)
+  joint20: best_iter=516 of cap 20000 full_rounds=568  2025-06 residual RMSE 304.82 -> 303.84
+
+holdout rows 344,339; monster labels (> 5 h): 31
+stack weights  control {'fit 2025-01': {'lgb': np.float64(0.515), 'catcorr': np.float64(0.483)}, 'fit 2025-07': {'lgb': np.float64(0.368), 'catcorr': np.float64(0.659)}}
+               Arm A   {'fit 2025-01': {'lgbcorr20': np.float64(0.704), 'catcorr20': np.float64(0.296)}, 'fit 2025-07': {'lgbcorr20': np.float64(0.521), 'catcorr20': np.float64(0.508)}}
+  lgbcorr20: {'best_iter': 4585, 'full_rounds': 5044, 'hit_cap': False, 'applied_frac': 0.9997386296643714}
+  catcorr20: {'best_iter': 5378, 'full_rounds': 5916, 'hit_cap': False, 'applied_frac': 0.9997386296643714}
+  joint20: {'best_iter': 516, 'full_rounds': 568, 'hit_cap': False, 'applied_frac': 0.9997386296643714}
+
+GATE: Arm A  NNLS(lgbcorr20, catcorr20) vs control NNLS(lgb, catcorr)
+ TRIMMED (decides):
+  Jul trimmed (fit Jan)        base= 295.34  new= 295.78  delta= +0.44  CI[-0.73,+1.70]  P(worse)=0.748
+  Jan trimmed (fit Jul)        base= 230.93  new= 228.77  delta= -2.16  CI[-5.82,+0.00]  P(worse)=0.026
+  POOLED trimmed               base= 268.51  new= 267.96  delta= -0.56  CI[-2.15,+0.75]  P(worse)=0.228
+ FULL (guard):
+  Jul full                     base= 313.87  new= 313.29  delta= -0.58  CI[-2.07,+0.99]  P(worse)=0.233
+  Jan full                     base= 352.62  new= 351.17  delta= -1.45  CI[-4.30,-0.02]  P(worse)=0.023
+  POOLED full                  base= 331.72  new= 330.73  delta= -0.99  CI[-2.50,+0.15]  P(worse)=0.053
+ rule: pooled trimmed delta<0 & P<0.05 [-0.56, 0.228], both months trimmed<0 [Jan -2.16, Jul +0.44], full guard P<0.9 [0.053] -> FAIL
+
+GATE: Arm B  joint20 vs control NNLS(lgb, catcorr)
+ TRIMMED (decides):
+  Jul trimmed (fit Jan)        base= 295.34  new= 295.78  delta= +0.44  CI[-0.22,+1.18]  P(worse)=0.886
+  Jan trimmed (fit Jul)        base= 230.93  new= 226.03  delta= -4.90  CI[-8.11,-2.98]  P(worse)=0.000
+  POOLED trimmed               base= 268.51  new= 266.92  delta= -1.60  CI[-3.01,-0.62]  P(worse)=0.000
+ FULL (guard):
+  Jul full                     base= 313.87  new= 313.75  delta= -0.12  CI[-0.94,+0.74]  P(worse)=0.376
+  Jan full                     base= 352.62  new= 350.10  delta= -2.52  CI[-5.75,-0.13]  P(worse)=0.016
+  POOLED full                  base= 331.72  new= 330.46  delta= -1.26  CI[-2.69,-0.12]  P(worse)=0.014
+ rule: pooled trimmed delta<0 & P<0.05 [-1.60, 0.000], both months trimmed<0 [Jan -4.90, Jul +0.44], full guard P<0.9 [0.014] -> FAIL
+
+GATE: Arm B  joint20 vs Arm A
+ TRIMMED (decides):
+  Jul trimmed (fit Jan)        base= 295.78  new= 295.78  delta= +0.00  CI[-1.06,+1.09]  P(worse)=0.506
+  Jan trimmed (fit Jul)        base= 228.77  new= 226.03  delta= -2.74  CI[-4.02,-1.46]  P(worse)=0.000
+  POOLED trimmed               base= 267.96  new= 266.92  delta= -1.04  CI[-1.82,-0.24]  P(worse)=0.005
+ FULL (guard):
+  Jul full                     base= 313.29  new= 313.75  delta= +0.46  CI[-0.70,+1.66]  P(worse)=0.789
+  Jan full                     base= 351.17  new= 350.10  delta= -1.07  CI[-2.96,+0.73]  P(worse)=0.095
+  POOLED full                  base= 330.73  new= 330.46  delta= -0.27  CI[-1.16,+0.73]  P(worse)=0.290
+ rule: pooled trimmed delta<0 & P<0.05 [-1.04, 0.005], both months trimmed<0 [Jan -2.74, Jul +0.00], full guard P<0.9 [0.290] -> FAIL
+
+DECISION (amendment item 5): A vs control FAIL; B vs control FAIL; B vs A FAIL
+  -> candidate for v22: none (v21 stays)
+
+DIAGNOSTICS (not decisive)
+ NNLS(lgbcorr20, catcorr): lgb corrector alone  weights {'fit 2025-01': {'lgbcorr20': np.float64(0.703), 'catcorr': np.float64(0.298)}, 'fit 2025-07': {'lgbcorr20': np.float64(0.525), 'catcorr': np.float64(0.504)}}
+  pooled trimmed vs control    base= 268.51  new= 267.93  delta= -0.58  CI[-2.26,+0.69]  P(worse)=0.230
+  pooled full vs control       base= 331.72  new= 330.72  delta= -1.00  CI[-2.45,+0.13]  P(worse)=0.045
+ NNLS(lgb, catcorr20): 20k cap on cat alone  weights {'fit 2025-01': {'lgb': np.float64(0.515), 'catcorr20': np.float64(0.482)}, 'fit 2025-07': {'lgb': np.float64(0.367), 'catcorr20': np.float64(0.66)}}
+  pooled trimmed vs control    base= 268.51  new= 268.48  delta= -0.04  CI[-0.07,-0.01]  P(worse)=0.007
+  pooled full vs control       base= 331.72  new= 331.68  delta= -0.04  CI[-0.06,-0.01]  P(worse)=0.002
+ single models:
+  lgbcorr20 vs lgb, trimmed    base= 273.63  new= 268.37  delta= -5.25  CI[-6.77,-3.58]  P(worse)=0.000
+  catcorr20 vs catcorr, trim   base= 269.93  new= 269.90  delta= -0.03  CI[-0.07,+0.01]  P(worse)=0.090
+ no LIRF:
+  Arm A, trimmed               base= 229.13  new= 228.84  delta= -0.29  CI[-0.82,+0.29]  P(worse)=0.152
+  Arm B, trimmed               base= 229.13  new= 227.56  delta= -1.57  CI[-1.97,-1.20]  P(worse)=0.000
+per airport, trimmed:
+shape: (10, 7)
+| ADEP_mvt | control | arm_a  | arm_b  | len   | dA    | dB    |
+| ---      | ---     | ---    | ---    | ---   | ---   | ---   |
+| str      | f64     | f64    | f64    | u32   | f64   | f64   |
+|----------|---------|--------|--------|-------|-------|-------|
+| EDDF     | 189.74  | 190.42 | 187.05 | 36830 | 0.69  | -2.68 |
+| EDDM     | 182.82  | 181.51 | 182.96 | 27091 | -1.31 | 0.15  |
+| EGLL     | 285.26  | 285.34 | 282.38 | 40210 | 0.07  | -2.88 |
+| EHAM     | 194.03  | 192.73 | 193.51 | 40949 | -1.30 | -0.52 |
+| LEBL     | 223.08  | 222.87 | 221.75 | 28985 | -0.21 | -1.33 |
+| LEMD     | 178.76  | 178.35 | 176.71 | 35328 | -0.41 | -2.05 |
+| LFPG     | 268.17  | 267.54 | 265.93 | 39588 | -0.63 | -2.24 |
+| LIRF     | 554.20  | 552.16 | 551.95 | 26499 | -2.05 | -2.26 |
+| LSZH     | 205.74  | 205.21 | 204.52 | 22289 | -0.53 | -1.21 |
+| LTFM     | 265.42  | 265.64 | 264.73 | 46539 | 0.23  | -0.68 |
+per airport, full:
+shape: (10, 7)
+| ADEP_mvt | control | arm_a  | arm_b  | len   | dA    | dB    |
+| ---      | ---     | ---    | ---    | ---   | ---   | ---   |
+| str      | f64     | f64    | f64    | u32   | f64   | f64   |
+|----------|---------|--------|--------|-------|-------|-------|
+| EDDF     | 189.74  | 190.42 | 187.05 | 36830 | 0.69  | -2.68 |
+| EDDM     | 182.82  | 181.51 | 182.96 | 27091 | -1.31 | 0.15  |
+| EGLL     | 285.26  | 285.34 | 282.38 | 40210 | 0.07  | -2.88 |
+| EHAM     | 194.03  | 192.73 | 193.51 | 40949 | -1.30 | -0.52 |
+| LEBL     | 223.08  | 222.87 | 221.75 | 28985 | -0.21 | -1.33 |
+| LEMD     | 178.76  | 178.35 | 176.71 | 35328 | -0.41 | -2.05 |
+| LFPG     | 573.59  | 573.03 | 572.30 | 39590 | -0.56 | -1.28 |
+| LIRF     | 644.73  | 639.69 | 643.33 | 26528 | -5.04 | -1.40 |
+| LSZH     | 205.74  | 205.21 | 204.52 | 22289 | -0.53 | -1.21 |
+| LTFM     | 265.42  | 265.64 | 264.73 | 46539 | 0.23  | -0.68 |
+per decile of true taxi (all rows):
+shape: (10, 8)
+| dec | taxi_max | control | arm_a  | arm_b  | len   | dA    | dB     |
+| --- | ---      | ---     | ---    | ---    | ---   | ---   | ---    |
+| cat | i64      | f64     | f64    | f64    | u32   | f64   | f64    |
+|-----|----------|---------|--------|--------|-------|-------|--------|
+| 1   | 569      | 195.07  | 192.93 | 187.88 | 34564 | -2.14 | -7.19  |
+| 2   | 671      | 175.44  | 172.46 | 167.45 | 34648 | -2.98 | -7.99  |
+| 3   | 770      | 195.44  | 185.88 | 181.40 | 34507 | -9.56 | -14.05 |
+| 4   | 842      | 177.77  | 175.21 | 170.44 | 34498 | -2.56 | -7.33  |
+| 5   | 923      | 178.22  | 175.42 | 172.11 | 34055 | -2.80 | -6.11  |
+| 6   | 1020     | 181.53  | 179.71 | 175.82 | 34897 | -1.82 | -5.71  |
+| 7   | 1134     | 189.28  | 188.11 | 184.70 | 34362 | -1.17 | -4.58  |
+| 8   | 1266     | 220.62  | 218.42 | 216.69 | 34276 | -2.19 | -3.93  |
+| 9   | 1505     | 245.87  | 243.78 | 246.15 | 34189 | -2.10 | 0.28   |
+| 10  | 88132    | 868.47  | 870.73 | 875.66 | 34343 | 2.27  | 7.20   |

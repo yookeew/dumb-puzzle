@@ -1,0 +1,36 @@
+v24 combiner: {'fit 2025-01': {'best_iter': 4614, 'top_gain': ['a_rel:0.24', 'L_rel:0.17', 's:0.10', 'adsb_first_own_m:0.07', 'L:0.07', 'adsb_pb_dist_m:0.07', 'airport:0.06', 'hour:0.04']}, 'fit 2025-07': {'best_iter': 1008, 'top_gain': ['a_rel:0.23', 'L_rel:0.17', 'airport:0.10', 's:0.08', 'adsb_first_own_m:0.07', 'adsb_pb_dist_m:0.07', 'L:0.06', 'hour:0.06']}}
+rows with ADS-B information: 159,451 of 344,339
+v2 combiner: {'fit 2025-01': {'best_iter': 4999, 'n_fit': 69667, 'top_gain': ['a_rel:0.26', 'L_rel:0.23', 'L:0.08', 'adsb_first_own_m:0.08', 'adsb_pb_dist_m:0.07', 's:0.06', 'adsb_taxi:0.05', 'airport:0.03']}, 'fit 2025-07': {'best_iter': 3014, 'n_fit': 78490, 'top_gain': ['a_rel:0.23', 'L_rel:0.23', 'L:0.09', 'adsb_first_own_m:0.08', 'adsb_pb_dist_m:0.07', 'airport:0.06', 'adsb_first_gs:0.04', 'adsb_min_own_m:0.04']}}
+
+=== PRIMARY: combiner v2 vs v24-restricted ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 288.41  new= 288.23  delta= -0.19  CI[-0.35,-0.03]  P(worse)=0.010
+  B  Jan (fit Jul)             base= 216.84  new= 216.82  delta= -0.02  CI[-0.14,+0.10]  P(worse)=0.376
+  POOLED trimmed               base= 258.93  new= 258.81  delta= -0.12  CI[-0.23,-0.02]  P(worse)=0.013
+ FULL (guard):
+  POOLED full                  base= 324.01  new= 323.92  delta= -0.10  CI[-0.19,-0.01]  P(worse)=0.014
+
+PRIMARY DECISION: ADOPT -> build, board A/B
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta |
+| ---      | ---    | ---    | ---     | ---   |
+| str      | f64    | f64    | u32     | f64   |
+|----------|--------|--------|---------|-------|
+| EDDF     | 175.13 | 174.34 | 28191   | -0.79 |
+| EDDM     | 138.61 | 139.47 | 17046   | 0.86  |
+| EGLL     | 279.47 | 278.99 | 12275   | -0.48 |
+| EHAM     | 158.45 | 157.99 | 40560   | -0.46 |
+| LEBL     | 200.36 | 200.47 | 25569   | 0.11  |
+| LEMD     | 176.32 | 176.24 | 3218    | -0.07 |
+| LFPG     | 268.68 | 268.46 | 2954    | -0.22 |
+| LIRF     | 554.20 | 554.20 | 0       | 0.00  |
+| LSZH     | 180.75 | 181.11 | 18343   | 0.36  |
+| LTFM     | 265.42 | 265.42 | 1       | 0.00  |
+
+=== reported: v2 vs unrestricted v24 ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 289.82  new= 288.23  delta= -1.59  CI[-2.22,-1.07]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 217.53  new= 216.82  delta= -0.70  CI[-1.57,+0.16]  P(worse)=0.058
+  POOLED trimmed               base= 260.05  new= 258.81  delta= -1.24  CI[-1.75,-0.78]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 324.94  new= 323.92  delta= -1.03  CI[-1.52,-0.65]  P(worse)=0.000

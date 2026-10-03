@@ -1,0 +1,41 @@
+Licences for the derived data tables in data/external/
+======================================================
+
+The data files in this directory are NOT covered by this project's code
+licence (GNU GPL v3, see /LICENSE). Each file is listed with its own
+licence below.
+
+1. stands.csv, runways.csv
+   ------------------------
+   Source: X-Plane Scenery Gateway (https://gateway.x-plane.com), airport
+   scenery packs by Laminar Research and community contributors. These are
+   the stand/gate positions (apt.dat row codes 1300/1301) and runway ends
+   (row code 100) for the challenge airports. Scenery IDs and approval
+   dates are recorded per row.
+   Licence: GNU General Public License v2. The full text, as shipped in
+   each scenery pack's COPYING file, is in stands_LICENSE_GPLv2.txt.
+   Built by: src/ingest/fetch_stands.py
+
+2. stands_inferred.csv
+   --------------------
+   Source: derived from adsb.lol ADS-B data (https://adsb.lol,
+   https://github.com/adsblol/globe_history_2025 and globe_history_2026)
+   combined with the challenge's STAND_mvt identifiers. These are positions
+   for 50 stands missing from the Gateway table: the median of matched
+   departure tracks' stationary first samples.
+   Licence: Open Database License (ODbL) v1.0. This file is a Derivative
+   Database of the adsb.lol database and is made available under the same
+   licence: https://opendatacommons.org/licenses/odbl/1-0/
+   Attribution: "Contains data from adsb.lol contributors, made available
+   under the ODbL."
+   Built by: src/ingest/stand_infer.py
+
+3. adsb/ (not committed)
+   ----------------------
+   The normalised adsb.lol track store, rebuilt locally by
+   src/ingest/fetch_adsb.py and src/ingest/normalise_adsb.py. ODbL v1.0,
+   attribution "adsb.lol contributors". The same applies to any
+   redistribution of it.
+
+The per-source details (URLs, access dates, fetch scripts) are in
+/DATA_SOURCES.md.

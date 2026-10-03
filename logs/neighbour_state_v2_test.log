@@ -1,0 +1,79 @@
+thin-day rule: 115 days kept, 7 dropped
+shape: (7, 5)
+| day        | status   | bad_members | points | med        |
+| ---        | ---      | ---         | ---    | ---        |
+| str        | str      | i64         | i64    | f64        |
+|------------|----------|-------------|--------|------------|
+| 2025-08-10 | tolerant | 1           | 211018 | 1.572131e6 |
+| 2025-10-04 | ok       | 0           | 0      | 1672691.5  |
+| 2025-10-07 | tolerant | 1           | 206056 | 1672691.5  |
+| 2025-11-19 | tolerant | 1           | 142500 | 1.549465e6 |
+| 2025-11-22 | tolerant | 1           | 247284 | 1.549465e6 |
+| 2025-12-10 | tolerant | 1           | 671427 | 1586008.5  |
+| 2025-12-28 | tolerant | 1           | 251232 | 1586008.5  |
+OOF-month ADS-B rows: 660,242 on 115 days (['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']); OOF stack weights [0.564 0.445]
+fit 2025-01: best_iter 696; applied to 2025-07: 100,895 rows; correction RMS raw 76.9, demeaned 74.3
+shape: (10, 5)
+| a    | len   | mean_raw | rms_raw | rms_demeaned |
+| ---  | ---   | ---      | ---     | ---          |
+| str  | u32   | f64      | f64     | f64          |
+|------|-------|----------|---------|--------------|
+| EDDF | 4528  | -8.0     | 54.8    | 52.9         |
+| EDDM | 9779  | -4.7     | 37.6    | 36.3         |
+| EGLL | 17575 | -16.3    | 94.0    | 88.7         |
+| EHAM | 23    | -6.3     | 38.1    | 16.1         |
+| LEBL | 2913  | -12.7    | 63.9    | 60.5         |
+| LEMD | 15646 | -6.4     | 41.5    | 40.5         |
+| LFPG | 18753 | -5.4     | 60.9    | 59.2         |
+| LIRF | 3917  | -16.1    | 147.1   | 138.9        |
+| LSZH | 2591  | -10.0    | 51.0    | 48.5         |
+| LTFM | 25170 | 0.9      | 92.4    | 91.1         |
+fit 2025-07: best_iter 1059; applied to 2025-01: 83,993 rows; correction RMS raw 64.8, demeaned 60.0
+shape: (10, 5)
+| a    | len   | mean_raw | rms_raw | rms_demeaned |
+| ---  | ---   | ---      | ---     | ---          |
+| str  | u32   | f64      | f64     | f64          |
+|------|-------|----------|---------|--------------|
+| EDDF | 4111  | -6.3     | 78.7    | 66.7         |
+| EDDM | 266   | -16.7    | 36.4    | 31.0         |
+| EGLL | 10360 | -26.0    | 59.1    | 52.1         |
+| EHAM | 366   | -14.4    | 46.9    | 41.4         |
+| LEBL | 503   | -17.6    | 51.8    | 46.9         |
+| LEMD | 16464 | -22.4    | 37.8    | 30.0         |
+| LFPG | 17883 | -9.7     | 69.4    | 65.7         |
+| LIRF | 11317 | -29.6    | 87.9    | 82.2         |
+| LSZH | 1355  | -18.8    | 67.7    | 61.4         |
+| LTFM | 21368 | -11.6    | 63.2    | 61.3         |
+
+=== PRIMARY: neighbour state v2 (within-day, (b) only) vs v27 method ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 286.82  new= 282.72  delta= -4.10  CI[-6.88,-1.90]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 214.90  new= 212.66  delta= -2.24  CI[-3.95,-0.59]  P(worse)=0.003
+  POOLED trimmed               base= 257.22  new= 253.85  delta= -3.37  CI[-5.24,-1.88]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 322.65  new= 320.72  delta= -1.93  CI[-3.94,-0.28]  P(worse)=0.010
+
+PRIMARY DECISION: ADOPT -> build, board A/B
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta  |
+| ---      | ---    | ---    | ---     | ---    |
+| str      | f64    | f64    | u32     | f64    |
+|----------|--------|--------|---------|--------|
+| EDDF     | 172.62 | 171.79 | 8639    | -0.83  |
+| EDDM     | 133.37 | 131.93 | 10034   | -1.44  |
+| EGLL     | 278.00 | 272.18 | 27935   | -5.82  |
+| EHAM     | 150.06 | 150.09 | 382     | 0.04   |
+| LEBL     | 197.53 | 196.40 | 3416    | -1.14  |
+| LEMD     | 175.15 | 172.20 | 32110   | -2.95  |
+| LFPG     | 268.07 | 267.32 | 36634   | -0.75  |
+| LIRF     | 554.20 | 550.52 | 15222   | -3.68  |
+| LSZH     | 176.55 | 175.17 | 3946    | -1.38  |
+| LTFM     | 265.42 | 254.67 | 46538   | -10.74 |
+
+=== REPORTED: (b) only, not demeaned ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 286.82  new= 282.46  delta= -4.37  CI[-7.21,-1.92]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 214.90  new= 211.19  delta= -3.71  CI[-5.69,-1.82]  P(worse)=0.000
+  POOLED trimmed               base= 257.22  new= 253.14  delta= -4.08  CI[-6.16,-2.41]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 322.65  new= 320.21  delta= -2.44  CI[-4.58,-0.68]  P(worse)=0.003
