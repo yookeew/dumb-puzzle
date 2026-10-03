@@ -1,6 +1,6 @@
 # Reproducing this project
 
-This rebuilds our best submission, **v25** (leaderboard RMSE 264.39), from
+This rebuilds our best submission, **v26** (leaderboard RMSE 262.70), from
 the raw challenge data. The design is in [CLAUDE.md](CLAUDE.md). The
 experiment log, including every rejected idea, is in
 [PROGRESS.md](PROGRESS.md). Every adopted change has a pre-registration in
@@ -14,7 +14,8 @@ experiment log, including every rejected idea, is in
 4. Two base models: LightGBM (local) and CatBoost (Colab GPU).
 5. A second-stage corrector on CatBoost, trained on out-of-fold predictions.
 6. An NNLS stack of the two models, then the ADS-B stages → v23.
-7. A learned ADS-B combiner on rows that have ADS-B information → v25.
+7. A learned ADS-B combiner on rows that have ADS-B information, trained on
+   the holdout plus Sep–Dec 2025 ADS-B → v26.
 
 Everything under `cache/` is scratch space, gitignored, and rebuilt by the
 steps below.
@@ -23,7 +24,7 @@ steps below.
 
 | Step | Where | Time |
 |---|---|---|
-| ADS-B download (126 days) | Colab or any machine | several hours, network-bound |
+| ADS-B download (126 + 50 days) | Colab or any machine | several hours, network-bound |
 | ADS-B detection (4 passes) | local | ~1 h |
 | LightGBM | local (tested on 22 cores / 32 GB RAM) | ~2 h |
 | CatBoost (3 runs) | Colab T4 | ~4 h |
@@ -73,7 +74,11 @@ Each source, with its licence, is listed in [DATA_SOURCES.md](DATA_SOURCES.md).
    - The two single days (2025-09-15, 2025-11-15) were used to explore
      designs outside the holdout. The stand inference in step 2 also reads
      them.
-4. `src/ingest/normalise_adsb.py` writes the tracks to
+4. **Sep–Dec 2025 sample** for the combiner (§64): the 1st–4th of each
+   month, then every third day to the 28th, plus the 15th of Sep and Nov,
+   into `external-data/adsb-restofyear/` (Colab cell "ADS-B fetch, the
+   other 2025 months"). Keep `manifest.csv`: the thin-day rule reads it.
+5. `src/ingest/normalise_adsb.py` writes the tracks to
    `data/external/adsb/day=*/`. It reads `external-data/adsb/`,
    `external-data/adsb-fetch/` and `external-data/adsb-restofyear/`.
 
@@ -196,7 +201,24 @@ name.
 Without `--adsb-v3`, the same script rebuilds v21 byte for byte
 (`stack_lgb_catcorr_adsbq_partial.parquet`).
 
-## 7. Learned ADS-B combiner → v25 (local, ~15 min)
+## 7. Learned ADS-B combiner → v26 (local, ~20 min)
+
+First run `src/link/adsb_pushback.py --v4 <the Sep–Dec days>` so the new
+days have v4 detections (step 2's pass 4 covers them if they were
+downloaded first). Then:
+
+```
+python src/post/adsb_combiner.py --m12
+```
+
+- This is v25's combiner, trained on the Jan+Jul 2025 holdout plus the
+  Sep–Dec days that pass the pre-registered thin-day rule (44 of 50).
+  Their stack prediction comes from the month-wise out-of-fold LightGBM
+  and CatBoost (`cache/oof/{lgb,cat}_mixed/`).
+- It writes `data/submissions/smart-jigsaw_m12.parquet`, uploaded as v26
+  (`reports/adsb_combiner_12m_preregistration.md`).
+
+### v25 (previous best)
 
 ```
 python src/post/adsb_combiner.py --restricted
@@ -208,7 +230,7 @@ python src/post/adsb_combiner.py --restricted
 - It's applied to 2026 ranking rows that have ADS-B information (a matched
   track or a fallback match). Every other row, and all of LIRF, keeps v23's
   value (`reports/adsb_combiner_restricted_preregistration.md`).
-- Output: `data/submissions/smart-jigsaw_v25.parquet`.
+- Output: `data/submissions/smart-jigsaw_v25.parquet` (264.39).
 - Without `--restricted` it builds v24 (265.66), which applies the
   combiner to every non-LIRF row.
 
@@ -231,7 +253,8 @@ Upload with `python -m src.post.upload <file>` (credentials in `.env`, see
 | v21 | CatBoost replaced by the OOF-corrected CatBoost | 270.2 |
 | v23 | + inferred stands and gated fallback match (v3 detections) | 269.50 |
 | v24 | + learned ADS-B combiner (v4 detections) | 265.66 |
-| **v25** | combiner restricted to rows with ADS-B information | **264.39** |
+| v25 | combiner restricted to rows with ADS-B information | 264.39 |
+| **v26** | combiner retrained with Sep–Dec 2025 ADS-B | **262.70** |
 
 Rejected submissions (v18, v20, v22) are explained in PROGRESS.md §46 and
 §55.

@@ -68,6 +68,9 @@ def main() -> None:
     latest = {p.name: p for d in RAW_DIRS for p in sorted(d.glob("adsb_*.parquet"))}
     for path in (latest[k] for k in sorted(latest)):
         day, df, n_raw = normalise(path)
+        if n_raw == 0:   # e.g. 2025-10-04: release held a single empty trace
+            print(f"{day} [{path.parent.name}]: empty extract, skipped")
+            continue
         dest = OUT / f"day={day.isoformat()}"
         dest.mkdir(parents=True, exist_ok=True)
         df.write_parquet(dest / "part-0.parquet")

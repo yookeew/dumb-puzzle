@@ -117,3 +117,37 @@ local repo (label-free):** a thin-day rule.
 - The test prints the dropped days. The rule is applied as written,
   whatever it drops.
 
+
+## Results (2026-10-02, `tests/adsb_combiner_12m_test.py`, log `logs/adsb_combiner_12m_test.log`; run after commit f185b51)
+
+- **Data:** 50 days pulled. The thin-day rule dropped 6: 10-04 (empty),
+  10-07, 11-19, 11-22, 12-10, 12-28 (all tolerant reads with
+  < 50% of the month median). That leaves 44 days and 253,302 labelled
+  OOF-month DEP rows. OOF stack weights lgb 0.81 / cat 0.20.
+
+**Primary: ADOPT.**
+
+| trimmed RMSE | base (v25 method) | 12-month combiner | delta | 95% CI | P(worse) |
+|---|---|---|---|---|---|
+| A: Jul (fit Jan + OOF) | 288.41 | 287.22 | −1.19 | [−1.47, −0.95] | 0.000 |
+| B: Jan (fit Jul + OOF) | 216.84 | 215.54 | −1.31 | [−1.81, −0.94] | 0.000 |
+| pooled | 258.93 | 257.70 | −1.22 | [−1.46, −1.02] | 0.000 |
+| guard: pooled full | 324.01 | 323.04 | −0.98 | [−1.30, −0.75] | 0.000 |
+
+- **Every airport improves or holds:** EHAM −5.74, EDDM −3.58,
+  LSZH −2.55, EDDF −1.83, LEBL −1.78, EGLL −1.22, LEMD −0.99, LFPG −0.66.
+- **Best iterations 1,996 / 1,386** (v24: 4,614 / 1,008), so the fits are
+  much more stable.
+- **Reported, OOF months only** (no holdout month in training): pooled
+  −1.08, Jan −1.08, Jul −1.10. Later-2025 ADS-B alone transfers to
+  Jan/Jul.
+
+**Build** (`src/post/adsb_combiner.py --m12`, log
+`logs/adsb_combiner_m12_build.log`).
+- Fit on both holdout months plus the 44 OOF-month days (552,057 rows);
+  best_iter 2,752.
+- `data/submissions/smart-jigsaw_v26.parquet` (= `smart-jigsaw_m12.parquet`).
+  196,880 rows differ from v25, RMS 23.1 s.
+- Keep iff the board < 264.39.
+
+**Board: v26 = 262.70 (v25 264.39, −1.69). ADOPTED; new best.**

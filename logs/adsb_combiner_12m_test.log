@@ -1,0 +1,49 @@
+thin-day rule: 44 days kept, 6 dropped
+shape: (6, 5)
+| day        | status   | bad_members | points | med        |
+| ---        | ---      | ---         | ---    | ---        |
+| str        | str      | i64         | i64    | f64        |
+|------------|----------|-------------|--------|------------|
+| 2025-10-04 | ok       | 0           | 0      | 1672691.5  |
+| 2025-10-07 | tolerant | 1           | 206056 | 1672691.5  |
+| 2025-11-19 | tolerant | 1           | 142500 | 1.549465e6 |
+| 2025-11-22 | tolerant | 1           | 247284 | 1.549465e6 |
+| 2025-12-10 | tolerant | 1           | 671427 | 1586008.5  |
+| 2025-12-28 | tolerant | 1           | 251232 | 1586008.5  |
+OOF-month ADS-B rows: 253,302 on 44 days (['2025-09', '2025-10', '2025-11', '2025-12']); OOF stack weights [0.813 0.198]
+12-month combiner: {'fit 2025-01+OOF': {'best_iter': 1996, 'n_train': 376589}, 'fit 2025-07+OOF': {'best_iter': 1386, 'n_train': 409716}}
+
+=== PRIMARY: combiner + OOF months vs v25 method ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 288.41  new= 287.22  delta= -1.19  CI[-1.47,-0.95]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 216.84  new= 215.54  delta= -1.31  CI[-1.81,-0.94]  P(worse)=0.000
+  POOLED trimmed               base= 258.93  new= 257.70  delta= -1.22  CI[-1.46,-1.02]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 324.01  new= 323.04  delta= -0.98  CI[-1.30,-0.75]  P(worse)=0.000
+
+PRIMARY DECISION: ADOPT -> build, board A/B
+shape: (10, 5)
+| ADEP_mvt | base   | new    | changed | delta |
+| ---      | ---    | ---    | ---     | ---   |
+| str      | f64    | f64    | u32     | f64   |
+|----------|--------|--------|---------|-------|
+| EDDF     | 175.13 | 173.29 | 28191   | -1.83 |
+| EDDM     | 138.61 | 135.03 | 17046   | -3.58 |
+| EGLL     | 279.47 | 278.25 | 12275   | -1.22 |
+| EHAM     | 158.45 | 152.71 | 40560   | -5.74 |
+| LEBL     | 200.36 | 198.58 | 25569   | -1.78 |
+| LEMD     | 176.32 | 175.32 | 3218    | -0.99 |
+| LFPG     | 268.68 | 268.02 | 2954    | -0.66 |
+| LIRF     | 554.20 | 554.20 | 0       | 0.00  |
+| LSZH     | 180.75 | 178.21 | 18343   | -2.55 |
+| LTFM     | 265.42 | 265.42 | 1       | -0.00 |
+
+OOF-months-only combiner: {'fit 2025-01 (OOF only)': {'best_iter': 1713, 'n_train': 234248}, 'fit 2025-07 (OOF only)': {'best_iter': 1713, 'n_train': 234248}}
+
+=== reported: combiner trained on OOF months only ===
+ TRIMMED (decides):
+  A  Jul (fit Jan)             base= 288.41  new= 287.31  delta= -1.10  CI[-1.40,-0.84]  P(worse)=0.000
+  B  Jan (fit Jul)             base= 216.84  new= 215.76  delta= -1.08  CI[-1.81,-0.61]  P(worse)=0.000
+  POOLED trimmed               base= 258.93  new= 257.85  delta= -1.08  CI[-1.39,-0.83]  P(worse)=0.000
+ FULL (guard):
+  POOLED full                  base= 324.01  new= 323.15  delta= -0.86  CI[-1.20,-0.62]  P(worse)=0.000

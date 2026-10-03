@@ -4022,3 +4022,37 @@ holdout.
 - **Verdict:** a valid, split-blind feature candidate (same-day operator
   arrival echo rate at LIRF) for a future corrector or base retrain.
   Expected < 1 board point. Not pursued now.
+
+## 64. Combiner retrained with Sep-Dec 2025 ADS-B -- gate PASS (-1.22 trimmed); v26 built (2026-10-02)
+
+Pre-registered in `reports/adsb_combiner_12m_preregistration.md`, with
+four dated amendments, all before the data reached the repo: Sep-Dec only,
+days spread over each month, 09-15/11-15 re-downloaded, thin-day rule.
+- **Data:** 50 days pulled on Colab (`adsb_restofyear`). The thin-day rule
+  dropped 6, leaving 44 days and 253k labelled rows with month-wise OOF
+  base predictions.
+  - `normalise_adsb.py` now skips empty extracts (2025-10-04 was a single
+    empty trace).
+  - The 7 later-month days that arrived early are parked in
+    `external-data/adsb-later/`, unused.
+- **Gate:** pooled trimmed -1.22 (P 0.000), Jan -1.31, Jul -1.19, full
+  -0.98. Every airport improves (EHAM -5.7, EDDM -3.6, LSZH -2.6).
+  Best_iter 1,996 / 1,386, against v24's 4,614 / 1,008.
+- **Trained on Sep-Dec alone** (no holdout month): -1.08. Later-2025
+  coverage transfers.
+- **v26** = `src/post/adsb_combiner.py --m12`: RMS 23.1 s from v25. Keep
+  iff the board < 264.39. (The earlier combiner-v2 build that held this
+  name was never submitted.)
+- **Next if adopted:** more months (Feb-Aug), which need a new
+  pre-registration. The later-month days already in `adsb-later/` count
+  toward it.
+
+**Board (2026-10-03): v26 = 262.70, -1.69 vs v25. ADOPTED, new best** (~1.4x
+the holdout gain).
+
+| version | what | score |
+|---|---|---|
+| v23 | v3 detections (inferred stands + gated fallback) | 269.50 |
+| v24 | learned ADS-B combiner | 265.66 |
+| v25 | combiner restricted to ADS-B rows | 264.39 |
+| **v26** | combiner retrained with Sep-Dec 2025 ADS-B | **262.70** (best) |
