@@ -103,4 +103,9 @@ the holdout.
 
 ## Amendments
 
-(none)
+- **2026-10-03, before any result:** the treatment's clip is changed to
+  [0, 140,000] at every airport (from 10,800 outside LIRF).
+  - v27's combiner doesn't clip, and the stack legitimately exceeds
+    10,800 s on echo-hedged rows outside LIRF.
+  - A 10,800 cap would change those rows for reasons unrelated to
+    neighbours and contaminate the comparison.
